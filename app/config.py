@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     postgres_db: str = Field(alias="POSTGRES_DB")
     postgres_user: str = Field(alias="POSTGRES_USER")
     postgres_password: str = Field(alias="POSTGRES_PASSWORD")
+    # PostgreSQL Checkpointer 连接池（AsyncConnectionPool）
+    db_min_conn: int = Field(default=2, alias="DB_MIN_CONN")
+    db_max_conn: int = Field(default=20, alias="DB_MAX_CONN")
+    db_timeout: int = Field(default=30, alias="DB_TIMEOUT")
 
     redis_host: str = Field(default="localhost", alias="REDIS_HOST")
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
