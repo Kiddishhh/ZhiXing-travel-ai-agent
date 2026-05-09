@@ -3,7 +3,7 @@ ChromaDB 管理器 - 数据存储层
 封装 PersistentClient 和 Embedding 模型
 """
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import chromadb
 from chromadb import PersistentClient
@@ -30,6 +30,7 @@ class ChromaManager:
         self._client: PersistentClient = chromadb.PersistentClient(
             path=str(self.persist_path)
         )
+        self._vectorstores: Dict[str, Chroma] = {}
         app_logger.info(f"ChromaDB 客户端已初始化，持久化路径: {self.persist_path}")
 
     @property
@@ -54,12 +55,14 @@ class ChromaManager:
     def get_vectorstore(
         self, collection_name: str = "travel"
     ) -> Chroma:
-        """获取或创建 Chroma 向量存储实例"""
-        return Chroma(
-            client=self.client,
-            collection_name=collection_name,
-            embedding_function=self.embedding_function,
-        )
+        """获取或创建 Chroma 向量存储实例（懒加载缓存）"""
+        if collection_name not in self._vectorstores:
+            self._vectorstores[collection_name] = Chroma(
+                client=self.client,
+                collection_name=collection_name,
+                embedding_function=self.embedding_function,
+            )
+        return self._vectorstores[collection_name]
 
     def add_documents(
         self,
@@ -97,5 +100,5 @@ class ChromaManager:
         try:
             self.client.delete_collection(collection_name)
             app_logger.info(f"已删除集合 '{collection_name}'")
-        except ValueError:
+        except (ValueError, chromadb.errors.NotFoundError):
             app_logger.warning(f"集合 '{collection_name}' 不存在")

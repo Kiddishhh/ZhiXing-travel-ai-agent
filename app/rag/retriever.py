@@ -2,41 +2,45 @@
 混合检索器 - 应用服务层
 
 实现 BM25 关键词检索 + Dense 语义检索 + RRF 倒数排名融合。
-继承 LangChain BaseRetriever，与 LangChain/LangGraph 生态兼容。
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import jieba
 import numpy as np
 from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
-from pydantic import PrivateAttr
 from rank_bm25 import BM25Okapi
 
 from app.core.ChromaDB.chroma_client import ChromaManager
 from app.utils.logger import app_logger
 
 
-class HybridRetriever(BaseRetriever):
+class HybridRetriever:
     """混合检索器
 
     组合 BM25（关键词）和 Dense（语义）两种互补的检索方式，
     通过 RRF（Reciprocal Rank Fusion）进行结果融合。
     """
 
-    # Pydantic 可配置字段
-    chroma_manager: ChromaManager
-    bm25_top_k: int = 10
-    dense_top_k: int = 10
-    rrf_k: int = 60
-    final_top_k: int = 10
-    collection_name: str = "travel"
+    def __init__(
+        self,
+        chroma_manager: ChromaManager,
+        bm25_top_k: int = 10,
+        dense_top_k: int = 10,
+        rrf_k: int = 60,
+        final_top_k: int = 10,
+        collection_name: str = "travel",
+    ):
+        self.chroma_manager = chroma_manager
+        self.bm25_top_k = bm25_top_k
+        self.dense_top_k = dense_top_k
+        self.rrf_k = rrf_k
+        self.final_top_k = final_top_k
+        self.collection_name = collection_name
 
-    # 私有属性（非序列化）
-    _bm25: Optional[BM25Okapi] = PrivateAttr(default=None)
-    _documents: List[Document] = PrivateAttr(default_factory=list)
-    _doc_id_map: Dict[str, Document] = PrivateAttr(default_factory=dict)
-    _is_initialized: bool = PrivateAttr(default=False)
+        self._bm25: BM25Okapi | None = None
+        self._documents: List[Document] = []
+        self._doc_id_map: Dict[str, Document] = {}
+        self._is_initialized: bool = False
 
     def initialize(self, documents: List[Document]) -> None:
         """构建 BM25 索引和向量存储
@@ -96,7 +100,6 @@ class HybridRetriever(BaseRetriever):
         tokenized_query = list(jieba.cut(query))
         scores = np.array(self._bm25.get_scores(tokenized_query))
 
-        # 过滤零分文档，按分数降序取 top_k
         valid = np.where(scores > 0)[0]
         if len(valid) == 0:
             return []
@@ -105,15 +108,10 @@ class HybridRetriever(BaseRetriever):
         return [(f"doc_{idx}", float(scores[idx])) for idx in sorted_idx]
 
     def _dense_search(self, query: str) -> List[Tuple[str, float]]:
-        """Dense 语义检索
-
-        使用 similarity_search_with_score，返回 (doc_id, distance)，
-        distance 越小表示越相似。
-        """
+        """Dense 语义检索"""
         results = self.chroma_manager.similarity_search_with_score(
             query, k=self.dense_top_k, collection_name=self.collection_name
         )
-        # results: List[Tuple[Document, float]]
         dense_list = []
         for doc, distance in results:
             doc_id = doc.metadata.get("doc_id", "")
@@ -128,18 +126,7 @@ class HybridRetriever(BaseRetriever):
         bm25_results: List[Tuple[str, float]],
         dense_results: List[Tuple[str, float]],
     ) -> List[Tuple[str, float]]:
-        """RRF（Reciprocal Rank Fusion）倒数排名融合
-
-        对每篇出现在任一检索结果中的文档，按排名计算：
-            RRF_score = Σ 1 / (rrf_k + rank)
-
-        Args:
-            bm25_results: [(doc_id, score), ...]
-            dense_results: [(doc_id, distance), ...]
-
-        Returns:
-            [(doc_id, rrf_score), ...] 按 rrf_score 降序
-        """
+        """RRF（Reciprocal Rank Fusion）倒数排名融合"""
         rrf_scores: Dict[str, float] = {}
 
         for rank, (doc_id, _) in enumerate(bm25_results, start=1):
@@ -157,14 +144,17 @@ class HybridRetriever(BaseRetriever):
         )
         return sorted_results[: self.final_top_k]
 
-    # ── LangChain BaseRetriever 接口 ─────────────────
+    # ── 检索入口 ──────────────────────────────────────
 
-    def _get_relevant_documents(
-        self,
-        query: str,
-        **kwargs,
-    ) -> List[Document]:
-        """混合检索入口（实现 BaseRetriever 抽象方法）"""
+    def invoke(self, query: str) -> List[Document]:
+        """混合检索入口
+
+        Args:
+            query: 用户查询
+
+        Returns:
+            按 RRF 分数降序排列的文档列表
+        """
         if not query or not query.strip():
             app_logger.error("拒绝空查询")
             return []
@@ -179,18 +169,14 @@ class HybridRetriever(BaseRetriever):
 
         app_logger.info(f"混合检索开始: query='{query[:50]}'")
 
-        # 1. BM25 关键词检索
         bm25_results = self._bm25_search(query)
         app_logger.debug(f"  BM25 检索到 {len(bm25_results)} 条结果")
 
-        # 2. Dense 语义检索
         dense_results = self._dense_search(query)
         app_logger.debug(f"  Dense 检索到 {len(dense_results)} 条结果")
 
-        # 3. RRF 融合
         fused = self._rrf_fusion(bm25_results, dense_results)
 
-        # 4. 组装返回
         result_docs = []
         for doc_id, rrf_score in fused:
             doc = self._doc_id_map.get(doc_id)

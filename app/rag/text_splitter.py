@@ -35,19 +35,19 @@ class ParentDocumentSplitter:
         for doc in documents:
             parent_chunks = self.parent_splitter.split_documents([doc])
             for i, parent_chunk in enumerate(parent_chunks):
-                parent_id = f"{doc.metadata.get('source','unkown')}_{i}"
+                parent_id = f"{doc.metadata.get('source','unknown')}_{i}"
                 parent_chunk.metadata["parent_id"] = parent_id
                 parent_docs.append(parent_chunk)
 
-                child_chunks = self.child_splitter.split_documents(parent_chunks)
+                child_chunks = self.child_splitter.split_documents([parent_chunk])
 
                 for child_chunk in child_chunks:
                     child_chunk.metadata["parent_id"] = parent_id
                     child_docs.append(child_chunk)
                 
-            app_logger.info(
-                f"切分文档为 {len(parent_docs)} 个父文档"
-                f"{len(child_docs)} 个子文档"
-            )
+        app_logger.info(
+            f"切分文档为 {len(parent_docs)} 个父文档, "
+            f"{len(child_docs)} 个子文档"
+        )
 
-            return parent_docs, child_docs
+        return parent_docs, child_docs
