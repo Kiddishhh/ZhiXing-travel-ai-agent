@@ -174,7 +174,7 @@ def _weather_agent(query: str) -> str:
 
 # ── 图构建 ──────────────────────────────────────────────
 
-def build_router_graph() -> StateGraph:
+def create_destination_router() -> StateGraph:
     """构建并编译 Router 工作流图"""
     builder = StateGraph(DestinationRouterState)
 
@@ -196,7 +196,7 @@ def build_router_graph() -> StateGraph:
 Run:
 ```bash
 cd "d:/AI agent/知行智能旅游规划助手"
-python -c "from app.agents.routers.destination_router import build_router_graph; print('destination_router imported OK')"
+python -c "from app.agents.routers.destination_router import create_destination_router; print('destination_router imported OK')"
 ```
 
 Expected: `destination_router imported OK`
@@ -222,7 +222,7 @@ from app.agents.routers.destination_router import (
     agent_node,
     _explore_agent,
     _weather_agent,
-    build_router_graph,
+    create_destination_router,
 )
 
 
@@ -272,9 +272,9 @@ def test_route_to_agents_returns_send_list():
         assert send.node == "agent_node"
 
 
-def test_build_router_graph():
+def test_create_destination_router():
     """验证图编译成功"""
-    graph = build_router_graph()
+    graph = create_destination_router()
     assert graph is not None
     # 验证图中包含预期节点
     nodes = list(graph.nodes.keys())
@@ -302,13 +302,13 @@ Run:
 ```bash
 cd "d:/AI agent/知行智能旅游规划助手"
 python -c "
-from app.agents.routers.destination_router import build_router_graph
+from app.agents.routers.destination_router import create_destination_router
 from app.core.ChromaDB.chroma_client import ChromaManager
 from app.utils.logger import app_logger
 print('All dependencies imported OK')
 
 # 验证图编译
-graph = build_router_graph()
+graph = create_destination_router()
 print(f'Graph compiled OK, nodes: {list(graph.nodes.keys())}')
 "
 ```

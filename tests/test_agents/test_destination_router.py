@@ -1,65 +1,74 @@
-"""Destination Router 单元测试"""
-from app.agents.routers.destination_router import (
-    Classification,
-    AgentOutput,
-    DestinationRouterState,
-    ClassificationResult,
-    route_to_agents,
-    _explore_agent,
-    _weather_agent,
-    build_router_graph,
-)
+"""
+测试目的地 Router
+"""
+import asyncio
+
+import pytest
+
+from app.agents.routers.destination_router import create_destination_router
 
 
-def test_classification_result_model():
-    """验证 ClassificationResult Pydantic 模型"""
-    data = {
-        "classifications": [
-            {"agent": "explore", "query": "北京景点推荐"},
-            {"agent": "weather", "query": "北京天气"},
-        ]
-    }
-    result = ClassificationResult(**data)
-    assert len(result.classifications) == 2
-    assert result.classifications[0]["agent"] == "explore"
-    assert result.classifications[1]["query"] == "北京天气"
+@pytest.mark.asyncio
+async def test_explore_only():
+    """测试只调用探索 Agent"""
+    router = create_destination_router()
+
+    result = await router.ainvoke({
+        "original_query": "西安有什么好玩的景点？",
+        "destination": "西安",
+    })
+
+    print("\n=== 测试: 景点查询 ===")
+    print(f"分类结果: {result['classifications']}")
+    print(f"\n最终报告: \n{result['final_report']}")
+
+    assert len(result["classifications"]) == 1
+    assert result["classifications"][0]["agent"] == "explore"
+
+    print("\n测试通过: 仅调用探索 Agent\n")
 
 
-def test_agent_output_typeddict():
-    """验证 AgentOutput TypedDict 结构"""
-    output: AgentOutput = {"agent_name": "explore", "result": "测试结果"}
-    assert output["agent_name"] == "explore"
-    assert output["result"] == "测试结果"
+@pytest.mark.asyncio
+async def test_weather_only():
+    """测试只调用天气 Agent"""
+    router = create_destination_router()
+
+    result = await router.ainvoke({
+        "original_query": "西安现在天气怎么样？",
+        "destination": "西安",
+    })
+
+    print("\n=== 测试: 天气查询 ===")
+    print(f"分类结果: {result['classifications']}")
+    print(f"\n最终报告: \n{result['final_report']}")
+
+    assert len(result["classifications"]) == 1
+    assert result["classifications"][0]["agent"] == "weather"
+
+    print("\n测试通过: 仅调用天气 Agent\n")
 
 
-def test_weather_agent_placeholder():
-    """验证天气 Agent 返回占位结果"""
-    result = _weather_agent("北京天气如何")
-    assert result == "天气功能待实现"
+@pytest.mark.asyncio
+async def test_both_agents():
+    """测试并行调用两个 Agent"""
+    router = create_destination_router()
+
+    result = await router.ainvoke({
+        "original_query": "推荐西安旅游",
+        "destination": "西安",
+    })
+
+    print("\n=== 测试: 综合查询 ===")
+    print(f"分类结果: {result['classifications']}")
+    print(f"\n最终报告: \n{result['final_report']}")
+
+    assert len(result["classifications"]) == 2
+    assert {c["agent"] for c in result["classifications"]} == {"explore", "weather"}
+
+    print("\n测试通过: 并行调用两个 Agent\n")
 
 
-def test_route_to_agents_returns_send_list():
-    """验证 route_to_agents 返回 Send 列表"""
-    state: DestinationRouterState = {
-        "original_query": "北京旅游",
-        "destination": "北京",
-        "classifications": [
-            {"agent": "explore", "query": "北京景点"},
-            {"agent": "weather", "query": "北京天气"},
-        ],
-        "agent_results": [],
-        "final_report": "",
-    }
-    sends = route_to_agents(state)
-    assert len(sends) == 2
-    for send in sends:
-        assert send.node == "agent_node"
-
-
-def test_build_router_graph():
-    """验证图编译成功"""
-    graph = build_router_graph()
-    assert graph is not None
-    nodes = list(graph.nodes.keys())
-    assert "classifier_node" in nodes
-    assert "agent_node" in nodes
+if __name__ == "__main__":
+    asyncio.run(test_explore_only())
+    asyncio.run(test_weather_only())
+    asyncio.run(test_both_agents())

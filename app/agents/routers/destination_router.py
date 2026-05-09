@@ -63,7 +63,8 @@ _CLASSIFIER_PROMPT = (
     "规则：\n"
     "1. 为每个需要调用的 Agent 生成一个子查询\n"
     "2. 子查询应包含目的地名称，便于 Agent 检索\n"
-    "3. 至少返回一个 Agent（默认为 explore）\n\n"
+    "3. 综合性旅游查询（推荐、攻略、旅游规划等）应同时调用 explore 和 weather\n"
+    "4. 仅当查询明确限定某一领域时才调用单个 Agent（如只问景点→仅 explore）\n\n"
     "用户查询：{query}\n"
     "目的地：{destination}"
 )
@@ -155,18 +156,33 @@ def _weather_agent(query: str) -> str:
 
 # ── 图构建 ──────────────────────────────────────────────
 
-def build_router_graph() -> StateGraph:
+def compile_report(state: DestinationRouterState) -> dict:
+    """汇总所有 Agent 结果生成综合报告"""
+    report_parts = [f"## {state['destination']} 旅游信息\n"]
+
+    for output in state["agent_results"]:
+        report_parts.append(f"### {output['agent_name']}\n{output['result']}\n")
+
+    report = "\n".join(report_parts)
+
+    app_logger.info(f"综合报告生成完成，共 {len(state['agent_results'])} 个 Agent 结果")
+    return {"final_report": report}
+
+
+def create_destination_router() -> StateGraph:
     """构建并编译 Router 工作流图"""
     builder = StateGraph(DestinationRouterState)
 
     builder.add_node("classifier_node", classifier_node)
     builder.add_node("agent_node", agent_node)
+    builder.add_node("compile_report", compile_report)
 
     builder.add_edge(START, "classifier_node")
     builder.add_conditional_edges(
         "classifier_node",
         route_to_agents,
     )
-    builder.add_edge("agent_node", END)
+    builder.add_edge("agent_node", "compile_report")
+    builder.add_edge("compile_report", END)
 
     return builder.compile()
