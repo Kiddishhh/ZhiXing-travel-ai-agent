@@ -3,7 +3,8 @@
 
 包含枚举类型、子结构 TypedDict、主 TravelState、初始化函数和回退辅助数据。
 """
-from typing import Literal, TypedDict, Optional, NotRequired, List
+from operator import add
+from typing import Annotated, Literal, TypedDict, Optional, NotRequired, List
 
 from langgraph.graph import MessagesState
 
@@ -153,26 +154,43 @@ STEP_CLEANUP_MAP: dict[PlanningStep, list[str]] = {
 
 class TravelState(MessagesState):
     """旅行规划系统主状态，继承 MessagesState 自动获得 messages 字段"""
-    current_step: NotRequired[PlanningStep]
-    user_requirement: NotRequired[UserRequirement]
-    selected_destination: NotRequired[str]
-    selected_transport: NotRequired[TransportType]
-    selected_accommodation_types: NotRequired[List[AccommodationType]]
-    selected_food_types: NotRequired[List[FoodType]]
-    destination_options: NotRequired[List[DestinationInfo]]
-    transport_options: NotRequired[List[TransportInfo]]
-    accommodation_options: NotRequired[List[AccommodationInfo]]
-    food_options: NotRequired[List[FoodInfo]]
-    itinerary: NotRequired[List[ItineraryDay]]
-    budget: NotRequired[BudgetBreakdown]
-    report: NotRequired[str]
-    order_id: NotRequired[str]
-    approval_pending: NotRequired[bool]
-    approval_reason: NotRequired[str]
-    user_id: NotRequired[str]
-    session_id: NotRequired[str]
-    created_at: NotRequired[float]
-    updated_at: NotRequired[float]
+
+    # ── 流程控制 ──
+    current_step: NotRequired[PlanningStep]  # 当前步骤
+    tool_call_history: NotRequired[
+        Annotated[List[dict], add]           # 工具调用历史（累加）
+    ]
+
+    # ── 用户输入 ──
+    user_requirement: NotRequired[UserRequirement]  # 用户需求
+
+    # ── 用户选择 ──
+    selected_destination: NotRequired[str]                          # 选中的目的地
+    selected_transport: NotRequired[TransportType]                  # 选中的交通方式
+    selected_accommodation_types: NotRequired[List[AccommodationType]]  # 选中的住宿类型（多选）
+    selected_food_types: NotRequired[List[FoodType]]                 # 选中的餐饮类型（多选）
+
+    # ── 查询结果 ──
+    destination_options: NotRequired[List[DestinationInfo]]     # 目的地选项
+    transport_options: NotRequired[List[TransportInfo]]         # 交通选项
+    accommodation_options: NotRequired[List[AccommodationInfo]] # 住宿选项
+    food_options: NotRequired[List[FoodInfo]]                   # 餐饮选项
+
+    # ── 最终结果 ──
+    itinerary: NotRequired[List[ItineraryDay]]   # 行程安排
+    budget: NotRequired[BudgetBreakdown]         # 预算明细
+    report: NotRequired[str]                     # 旅行报告（Markdown 格式）
+    order_id: NotRequired[str]                   # 订单号
+
+    # ── 审批状态 ──
+    approval_pending: NotRequired[bool]    # 是否等待审批
+    approval_reason: NotRequired[str]      # 审批原因
+
+    # ── 元数据 ──
+    user_id: NotRequired[str]        # 用户 ID
+    session_id: NotRequired[str]     # 会话 ID
+    created_at: NotRequired[float]   # 创建时间（Unix 时间戳）
+    updated_at: NotRequired[float]   # 更新时间
 
 
 def create_initial_state(user_id: str, session_id: str) -> dict:

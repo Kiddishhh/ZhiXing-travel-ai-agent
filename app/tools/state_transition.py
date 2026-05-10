@@ -17,6 +17,8 @@ from langgraph.types import Command
 from app.core.state import (
     PlanningStep, ALLOWED_BACK_STEPS, STEP_CLEANUP_MAP,
     TransportType, AccommodationType, FoodType,
+    TransportInfo, AccommodationInfo, FoodInfo,
+    ItineraryDay,
     UserRequirement, BudgetBreakdown,
 )
 from app.utils.logger import app_logger
@@ -27,6 +29,8 @@ from app.utils.logger import app_logger
 def record_requirement_tool(user_requirement: UserRequirement) -> Command:
     """
     记录用户旅行需求并推进到目的地推荐步骤。
+
+    仅记录需求数据，不计算预算（预算在第 7 步根据实际数据汇总）。
 
     参数:
     - user_requirement: 完整的用户需求对象
@@ -59,57 +63,70 @@ def select_destination_tool(destination: str) -> Command:
 
 
 @tool
-def select_transport_tool(transport_type: TransportType) -> Command:
+def select_transport_tool(
+    transport_type: TransportType,
+    transport_options: list[TransportInfo],
+) -> Command:
     """
-    用户确认交通方式后调用。记录选择并推进到住宿规划。
+    用户确认交通方式后调用。记录选择和交通方案，推进到住宿规划。
 
     参数:
     - transport_type: 选择的交通方式 ("flight" / "train" / "driving")
+    - transport_options: LLM 查询到的交通方案列表（含价格），供预算汇总使用
     """
-    app_logger.info(f"交通确认: {transport_type}")
+    app_logger.info(f"交通确认: {transport_type}, {len(transport_options)} 个方案")
     return Command(update={
         "selected_transport": transport_type,
+        "transport_options": transport_options,
         "current_step": "accommodation_planning",
         "updated_at": time.time(),
     }, goto="agent")
 
 
 @tool
-def select_accommodation_tool(accommodation_types: list[AccommodationType]) -> Command:
+def select_accommodation_tool(
+    accommodation_types: list[AccommodationType],
+    accommodation_options: list[AccommodationInfo],
+) -> Command:
     """
-    用户确认住宿类型后调用。记录选择并推进到餐饮规划。
+    用户确认住宿类型后调用。记录选择和住宿方案，推进到餐饮规划。
 
     参数:
-    - accommodation_types: 选择的住宿类型列表
-      如 ["star_hotel", "hostel"]
+    - accommodation_types: 选择的住宿类型列表，如 ["star_hotel", "hostel"]
+    - accommodation_options: LLM 查询到的住宿方案列表（含价格），供预算汇总使用
     """
-    app_logger.info(f"住宿确认: {accommodation_types}")
+    app_logger.info(f"住宿确认: {accommodation_types}, {len(accommodation_options)} 个方案")
     return Command(update={
         "selected_accommodation_types": accommodation_types,
+        "accommodation_options": accommodation_options,
         "current_step": "food_planning",
         "updated_at": time.time(),
     }, goto="agent")
 
 
 @tool
-def select_food_tool(food_types: list[FoodType]) -> Command:
+def select_food_tool(
+    food_types: list[FoodType],
+    food_options: list[FoodInfo],
+) -> Command:
     """
-    用户确认餐饮类型后调用。记录选择并推进到行程生成。
+    用户确认餐饮类型后调用。记录选择和餐饮方案，推进到行程生成。
 
     参数:
-    - food_types: 选择的餐饮类型列表
-      如 ["specialty", "local"]
+    - food_types: 选择的餐饮类型列表，如 ["specialty", "local"]
+    - food_options: LLM 查询到的餐饮方案列表（含日均花费），供预算汇总使用
     """
-    app_logger.info(f"餐饮确认: {food_types}")
+    app_logger.info(f"餐饮确认: {food_types}, {len(food_options)} 个方案")
     return Command(update={
         "selected_food_types": food_types,
+        "food_options": food_options,
         "current_step": "itinerary_generation",
         "updated_at": time.time(),
     }, goto="agent")
 
 
 @tool
-def generate_itinerary_tool(itinerary: list[dict]) -> Command:
+def generate_itinerary_tool(itinerary: list[ItineraryDay]) -> Command:
     """
     行程生成完成后调用。记录行程并推进到预算汇总。
 
@@ -128,10 +145,18 @@ def generate_itinerary_tool(itinerary: list[dict]) -> Command:
 @tool
 def summarize_budget_tool(budget: BudgetBreakdown) -> Command:
     """
-    预算计算完成后调用。记录预算并推进到订单生成。
+    预算汇总完成后调用。记录完整预算明细并推进到订单生成。
+
+    LLM 应根据前面步骤收集的实际数据计算预算:
+    - transport: 从 transport_options 中提取交通费用
+    - accommodation: 从 accommodation_options 中提取住宿费用 (price_per_night * nights)
+    - food: 从 food_options 中提取日均餐饮费用
+    - attractions: 景点门票预估
+    - misc: 杂费预留 (通常为总额的 10%)
+    - total: 以上各项之和
 
     参数:
-    - budget: 预算明细对象
+    - budget: 完整的 BudgetBreakdown 对象
       包含: transport, accommodation, food, attractions, misc, total
     """
     app_logger.info(f"预算汇总完成: 总计 {budget.get('total')} 元")
