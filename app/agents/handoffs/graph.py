@@ -12,6 +12,7 @@ Handoffs 主流程 Graph 构建
 注入对应 prompt + tools。工具返回 Command 后由 LangGraph 自动处理 update 和 goto。
 """
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.messages import SystemMessage
 from langchain_community.chat_models import ChatTongyi
@@ -22,7 +23,7 @@ from app.config import settings
 from app.utils.logger import app_logger
 
 
-async def create_travel_planner() -> StateGraph:
+async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
     """
     构建 handoffs 主流程 Graph。
 
@@ -54,7 +55,7 @@ async def create_travel_planner() -> StateGraph:
     app_logger.info(
         f"Handoffs 主流程 Graph 构建完成 (agent + {len(all_tools)} 个工具)"
     )
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
 
 
 def _make_agent_node(llm: ChatTongyi, resolver: StepConfigResolver):
