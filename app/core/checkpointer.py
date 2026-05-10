@@ -31,8 +31,9 @@ class CheckpointerManager:
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:
-                    cls._instance = cls()
-                    await cls._instance.initialize()
+                    instance = cls()
+                    await instance.initialize()
+                    cls._instance = instance
         return cls._instance
 
     async def initialize(self):
@@ -53,10 +54,15 @@ class CheckpointerManager:
 
             await self.pool.open()
 
-            self.checkpointer = AsyncPostgresSaver(self.pool)
-            await self.checkpointer.setup()
+            try:
+                self.checkpointer = AsyncPostgresSaver(self.pool)
+                await self.checkpointer.setup()
 
-            app_logger.info("Checkpointer 初始化完成")
+                app_logger.info("Checkpointer 初始化完成")
+            except Exception:
+                await self.pool.close()
+                self.pool = None
+                raise
         except Exception as e:
             app_logger.error(f"Checkpointer 初始化失败: {e}")
             raise
@@ -65,6 +71,8 @@ class CheckpointerManager:
         """关闭连接池"""
         if self.pool:
             await self.pool.close()
+            self.pool = None
+            self.checkpointer = None
             app_logger.info("Checkpointer 连接池已关闭")
 
     def get_checkpointer(self) -> AsyncPostgresSaver:
