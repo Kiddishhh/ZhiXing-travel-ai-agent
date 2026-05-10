@@ -2,13 +2,15 @@
 Handoffs 主流程 Graph 构建
 
 单 agent 节点 + Command 跳转。
-每次 LLM 调用前, AgentMiddleware 根据 current_step 注入对应 prompt + tools。
+每次 LLM 调用前, agent_node 通过 StepConfigResolver 根据 current_step
+注入对应 prompt + tools。
 工具返回 Command 直接跳回 agent 节点 (或 __end__ 终止)。
 """
 from langgraph.graph import StateGraph, START
+from langchain_core.messages import SystemMessage
 from langchain_community.chat_models import ChatTongyi
 from app.core.state import TravelState
-from app.core.middleware import create_step_config_middleware
+from app.core.middleware import create_step_config_resolver, StepConfigResolver
 from app.config import settings
 from app.utils.logger import app_logger
 
@@ -25,7 +27,7 @@ async def create_travel_planner() -> StateGraph:
 
     返回编译后的图 (await graph.ainvoke(initial_state) 即可运行)
     """
-    middleware = await create_step_config_middleware()
+    resolver = await create_step_config_resolver()
 
     llm = ChatTongyi(
         model="qwen-max",
@@ -35,8 +37,7 @@ async def create_travel_planner() -> StateGraph:
     builder = StateGraph(TravelState)
     builder.add_node(
         "agent",
-        _make_agent_node(llm),
-        middleware=[middleware],
+        _make_agent_node(llm, resolver),
     )
     builder.add_edge(START, "agent")
 
@@ -44,11 +45,21 @@ async def create_travel_planner() -> StateGraph:
     return builder.compile()
 
 
-def _make_agent_node(llm: ChatTongyi):
-    """创建 agent 调用节点 (闭包捕获 llm 实例)"""
+def _make_agent_node(llm: ChatTongyi, resolver: StepConfigResolver):
+    """创建 agent 调用节点 (闭包捕获 llm 和 resolver 实例)"""
 
     async def agent_node(state: TravelState) -> dict:
-        response = await llm.ainvoke(state["messages"])
+        # 根据 current_step 解析 prompt + tools
+        system_prompt, tools = resolver.resolve(state)
+
+        # 将 system_prompt 作为 SystemMessage 注入消息列表
+        messages = list(state["messages"])
+        system_msg = SystemMessage(content=system_prompt)
+        messages.insert(0, system_msg)
+
+        # 绑定工具到 LLM
+        llm_with_tools = llm.bind_tools(tools)
+        response = await llm_with_tools.ainvoke(messages)
         return {"messages": [response]}
 
     return agent_node

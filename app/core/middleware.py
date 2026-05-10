@@ -1,34 +1,34 @@
 """
 步骤配置中间件
 
-AgentMiddleware 实现 awrap_model_call 钩子, 在每次 LLM 调用前:
+StepConfigResolver 在每次 LLM 调用前:
 1. 读取 current_step
 2. 查 step_config 获取对应 prompt + tools
 3. 验证前置依赖
-4. 注入配置到模型请求
+4. 返回渲染后的 prompt 和工具列表
 """
-from typing import Callable, Any
-
-from langgraph.config import ModelRequest, ModelResponse
-from app.core.state import TravelState
 from app.utils.logger import app_logger
 
 
-class AgentMiddleware:
-    """步骤配置中间件 - 根据 current_step 动态配置 Agent"""
+class StepConfigResolver:
+    """步骤配置解析器 - 根据 current_step 返回对应的 prompt 和 tools"""
 
     def __init__(self, step_config: dict):
         self._step_config = step_config
 
-    async def awrap_model_call(
-        self,
-        request: ModelRequest,
-        handler: Callable[[ModelRequest], ModelResponse]
-    ) -> ModelResponse:
+    def resolve(self, state: dict) -> tuple:
         """
-        根据 current_step 动态注入 prompt 和 tools
+        根据 current_step 解析步骤配置。
+
+        参数:
+        - state: 当前 TravelState 字典
+
+        返回:
+        - (system_prompt: str, tools: list)
+
+        抛出:
+        - ValueError: 未知步骤或前置依赖缺失
         """
-        state: TravelState = request.state
         current_step = state.get("current_step", "requirement_collection")
 
         app_logger.info(f"当前步骤: {current_step}")
@@ -51,30 +51,23 @@ class AgentMiddleware:
                 raise ValueError(error_msg)
             app_logger.debug(f"前置依赖满足: {required_field}")
 
-        # ── 注入 prompt + tools ──
+        # ── 渲染 prompt ──
         try:
             system_prompt = step_config["prompt"].format(**state)
         except KeyError as e:
             app_logger.warning(f"prompt 占位符无法渲染: {e}, 使用原始模板")
             system_prompt = step_config["prompt"]
 
-        modified_request = request.override(
-            system_prompt=system_prompt,
-            tools=step_config["tools"]
-        )
-
-        app_logger.info(
-            f"已注入步骤配置: {len(step_config['tools'])} 个工具"
-        )
-        return await handler(modified_request)
+        app_logger.info(f"已解析步骤配置: {len(step_config['tools'])} 个工具")
+        return system_prompt, step_config["tools"]
 
 
-async def create_step_config_middleware() -> AgentMiddleware:
+async def create_step_config_resolver() -> StepConfigResolver:
     """
-    工厂函数: 创建预加载配置的 AgentMiddleware 实例
+    工厂函数: 创建预加载配置的 StepConfigResolver 实例
     """
     from app.agents.handoffs.step_config import get_step_config
 
     step_config = await get_step_config()
-    app_logger.info("AgentMiddleware 创建完成")
-    return AgentMiddleware(step_config)
+    app_logger.info("StepConfigResolver 创建完成")
+    return StepConfigResolver(step_config)
