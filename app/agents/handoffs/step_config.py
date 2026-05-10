@@ -14,6 +14,13 @@ from app.tools.state_transition import (
     summarize_budget_tool,
     generate_order_tool,
     go_back_to_step,
+    go_back_to_requirement,
+    go_back_to_destination,
+    go_back_to_transport,
+    go_back_to_accommodation,
+    go_back_to_food,
+    go_back_to_itinerary,
+    go_back_to_budget,
     check_current_progress,
 )
 from app.tools.router_query import query_destination_info
@@ -77,11 +84,12 @@ async def get_step_config() -> dict:
 3. 用户确认后 → 调用 `select_destination_tool`
 
 **回退选项**:
-- 重新规划整个旅行 → `go_back_to_step("requirement_collection")`
+- 重新规划整个旅行 → `go_back_to_requirement(reason="...")` 或 `go_back_to_step("requirement_collection", reason="...")`
 """,
             "tools": [
                 query_destination_info,
                 select_destination_tool,
+                go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
             ],
@@ -108,12 +116,13 @@ async def get_step_config() -> dict:
 3. 用户确认后 → 调用 `select_transport_tool`
 
 **回退选项**:
-- 换目的地 → `go_back_to_step("destination_recommendation")`
-- 重新规划整个旅行 → `go_back_to_step("requirement_collection")`
+- 换目的地 → `go_back_to_destination(reason="...")` 或 `go_back_to_step("destination_recommendation", reason="...")`
+- 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
 """,
             "tools": [
                 query_flight, query_train, query_driving_route,
                 select_transport_tool,
+                go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
             ],
@@ -140,13 +149,14 @@ async def get_step_config() -> dict:
 3. 用户确认后 → 调用 `select_accommodation_tool`
 
 **回退选项**:
-- 换交通 → `go_back_to_step("transport_planning")`
-- 换目的地 → `go_back_to_step("destination_recommendation")`
-- 重新规划整个旅行 → `go_back_to_step("requirement_collection")`
+- 换交通 → `go_back_to_transport(reason="...")`
+- 换目的地 → `go_back_to_destination(reason="...")`
+- 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
 """,
             "tools": [
                 query_hotels, query_hostels,
                 select_accommodation_tool,
+                go_back_to_transport, go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
             ],
@@ -173,14 +183,16 @@ async def get_step_config() -> dict:
 3. 用户确认后 → 调用 `select_food_tool`
 
 **回退选项**:
-- 换住宿 → `go_back_to_step("accommodation_planning")`
-- 换交通 → `go_back_to_step("transport_planning")`
-- 换目的地 → `go_back_to_step("destination_recommendation")`
-- 重新规划整个旅行 → `go_back_to_step("requirement_collection")`
+- 换住宿 → `go_back_to_accommodation(reason="...")`
+- 换交通 → `go_back_to_transport(reason="...")`
+- 换目的地 → `go_back_to_destination(reason="...")`
+- 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
 """,
             "tools": [
                 query_restaurants, query_local_food,
                 select_food_tool,
+                go_back_to_accommodation, go_back_to_transport,
+                go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
             ],
@@ -205,14 +217,17 @@ async def get_step_config() -> dict:
 3. 用户确认后 → 调用 `generate_itinerary_tool`
 
 **回退选项**:
-- 改餐饮 → `go_back_to_step("food_planning")`
-- 改住宿 → `go_back_to_step("accommodation_planning")`
-- 改交通 → `go_back_to_step("transport_planning")`
-- 换目的地 → `go_back_to_step("destination_recommendation")`
-- 重新规划整个旅行 → `go_back_to_step("requirement_collection")`
+- 改餐饮 → `go_back_to_food(reason="...")`
+- 改住宿 → `go_back_to_accommodation(reason="...")`
+- 改交通 → `go_back_to_transport(reason="...")`
+- 换目的地 → `go_back_to_destination(reason="...")`
+- 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
 """,
             "tools": [
                 generate_itinerary_tool,
+                go_back_to_food, go_back_to_accommodation,
+                go_back_to_transport, go_back_to_destination,
+                go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
             ],
@@ -232,17 +247,20 @@ async def get_step_config() -> dict:
 4. 用户确认后 → 调用 `summarize_budget_tool`
 
 **回退选项**:
-- 改行程 → `go_back_to_step("itinerary_generation")`
-- 改餐饮 → `go_back_to_step("food_planning")`
-- 改住宿 → `go_back_to_step("accommodation_planning")`
-- 改交通 → `go_back_to_step("transport_planning")`
-- 换目的地 → `go_back_to_step("destination_recommendation")`
-- 重新规划整个旅行 → `go_back_to_step("requirement_collection")`
-- 回到任意步骤 → `go_back_to_step("<step_name>")`
+- 改行程 → `go_back_to_itinerary(reason="...")`
+- 改餐饮 → `go_back_to_food(reason="...")`
+- 改住宿 → `go_back_to_accommodation(reason="...")`
+- 改交通 → `go_back_to_transport(reason="...")`
+- 换目的地 → `go_back_to_destination(reason="...")`
+- 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
+- 回到任意步骤 → `go_back_to_step("<step_name>", reason="...")`
 """,
             "tools": [
                 calculate_budget,
                 summarize_budget_tool,
+                go_back_to_itinerary, go_back_to_food,
+                go_back_to_accommodation, go_back_to_transport,
+                go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
             ],
@@ -261,17 +279,20 @@ async def get_step_config() -> dict:
 3. 用户确认后 → 调用 `generate_order_tool` (自动结束流程)
 
 **回退选项** (最后修改机会):
-- 看预算 → `go_back_to_step("budget_summarization")`
-- 改行程 → `go_back_to_step("itinerary_generation")`
-- 改餐饮 → `go_back_to_step("food_planning")`
-- 改住宿 → `go_back_to_step("accommodation_planning")`
-- 改交通 → `go_back_to_step("transport_planning")`
-- 换目的地 → `go_back_to_step("destination_recommendation")`
-- 重新规划整个旅行 → `go_back_to_step("requirement_collection")`
-- 回到任意步骤 → `go_back_to_step("<step_name>")`
+- 看预算 → `go_back_to_budget(reason="...")`
+- 改行程 → `go_back_to_itinerary(reason="...")`
+- 改餐饮 → `go_back_to_food(reason="...")`
+- 改住宿 → `go_back_to_accommodation(reason="...")`
+- 改交通 → `go_back_to_transport(reason="...")`
+- 换目的地 → `go_back_to_destination(reason="...")`
+- 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
+- 回到任意步骤 → `go_back_to_step("<step_name>", reason="...")`
 """,
             "tools": [
                 generate_order_tool,
+                go_back_to_budget, go_back_to_itinerary, go_back_to_food,
+                go_back_to_accommodation, go_back_to_transport,
+                go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
             ],

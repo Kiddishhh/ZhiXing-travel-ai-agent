@@ -12,8 +12,8 @@ Handoffs 主流程 Graph 构建
 注入对应 prompt + tools。工具返回 Command 后由 LangGraph 自动处理 update 和 goto。
 """
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode
-from langchain_core.messages import SystemMessage, AIMessage
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.messages import SystemMessage
 from langchain_community.chat_models import ChatTongyi
 from app.core.state import TravelState
 from app.core.middleware import create_step_config_resolver, StepConfigResolver
@@ -48,21 +48,13 @@ async def create_travel_planner() -> StateGraph:
     builder.add_node("tools", ToolNode(all_tools))
 
     builder.add_edge(START, "agent")
-    builder.add_conditional_edges("agent", _route_after_agent)
+    builder.add_conditional_edges("agent", tools_condition)
     builder.add_edge("tools", "agent")
 
     app_logger.info(
         f"Handoffs 主流程 Graph 构建完成 (agent + {len(all_tools)} 个工具)"
     )
     return builder.compile()
-
-
-def _route_after_agent(state: TravelState) -> str:
-    """检查最后一条 AI 消息是否有 tool_calls，决定走 tools 节点还是结束"""
-    last_msg = state["messages"][-1]
-    if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
-        return "tools"
-    return END
 
 
 def _make_agent_node(llm: ChatTongyi, resolver: StepConfigResolver):

@@ -16,6 +16,13 @@ from .state_transition import (
     summarize_budget_tool,
     generate_order_tool,
     go_back_to_step,
+    go_back_to_requirement,
+    go_back_to_destination,
+    go_back_to_transport,
+    go_back_to_accommodation,
+    go_back_to_food,
+    go_back_to_itinerary,
+    go_back_to_budget,
     check_current_progress,
 )
 
@@ -41,6 +48,13 @@ register_tool("generate_itinerary_tool", generate_itinerary_tool)
 register_tool("summarize_budget_tool", summarize_budget_tool)
 register_tool("generate_order_tool", generate_order_tool)
 register_tool("go_back_to_step", go_back_to_step)
+register_tool("go_back_to_requirement", go_back_to_requirement)
+register_tool("go_back_to_destination", go_back_to_destination)
+register_tool("go_back_to_transport", go_back_to_transport)
+register_tool("go_back_to_accommodation", go_back_to_accommodation)
+register_tool("go_back_to_food", go_back_to_food)
+register_tool("go_back_to_itinerary", go_back_to_itinerary)
+register_tool("go_back_to_budget", go_back_to_budget)
 register_tool("check_current_progress", check_current_progress)
 
 # ── 注册业务占位工具 ──
