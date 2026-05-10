@@ -10,6 +10,7 @@ runtime 参数 (ToolRuntime) 由 ToolNode 自动注入, 无需 LLM 提供:
 import time
 
 from langchain_core.tools import tool
+from langchain_core.messages import ToolMessage
 from langchain_community.chat_models import ChatTongyi
 from langgraph.prebuilt.tool_node import ToolRuntime
 from langgraph.types import Command
@@ -85,6 +86,13 @@ def record_requirement_tool(
         "user_requirement": user_requirement,
         "current_step": "destination_recommendation",
         "updated_at": time.time(),
+        "messages": [
+            ToolMessage(
+                content=f"需求已记录: 目的地 {user_requirement.get('destination')}, "
+                        f"{user_requirement.get('travel_days')}天, 预算等级 {budget_level}",
+                tool_call_id=runtime.tool_call_id,
+            )
+        ],
     }, goto="agent")
 
 
@@ -104,6 +112,12 @@ def select_destination_tool(
         "selected_destination": destination,
         "current_step": "transport_planning",
         "updated_at": time.time(),
+        "messages": [
+            ToolMessage(
+                content=f"目的地已确认: {destination}",
+                tool_call_id=runtime.tool_call_id,
+            )
+        ],
     }, goto="agent")
 
 
@@ -133,6 +147,12 @@ def select_transport_tool(
         "transport_options": transport_options,
         "current_step": "accommodation_planning",
         "updated_at": time.time(),
+        "messages": [
+            ToolMessage(
+                content=f"交通方式已确认: {transport_type}, {len(transport_options)} 个方案",
+                tool_call_id=runtime.tool_call_id,
+            )
+        ],
     }, goto="agent")
 
 
@@ -163,6 +183,12 @@ def select_accommodation_tool(
         "accommodation_options": accommodation_options,
         "current_step": "food_planning",
         "updated_at": time.time(),
+        "messages": [
+            ToolMessage(
+                content=f"住宿已确认: {', '.join(accommodation_types)}, {len(accommodation_options)} 个方案",
+                tool_call_id=runtime.tool_call_id,
+            )
+        ],
     }, goto="agent")
 
 
@@ -193,6 +219,12 @@ def select_food_tool(
         "food_options": food_options,
         "current_step": "itinerary_generation",
         "updated_at": time.time(),
+        "messages": [
+            ToolMessage(
+                content=f"餐饮已确认: {', '.join(food_types)}, {len(food_options)} 个方案",
+                tool_call_id=runtime.tool_call_id,
+            )
+        ],
     }, goto="agent")
 
 
@@ -295,6 +327,12 @@ async def generate_itinerary_tool(
         "itinerary": itinerary,
         "current_step": "budget_summarization",
         "updated_at": time.time(),
+        "messages": [
+            ToolMessage(
+                content=f"行程已生成: {len(itinerary)} 天行程 (目的地: {destination})",
+                tool_call_id=runtime.tool_call_id,
+            )
+        ],
     }, goto="agent")
 
 
@@ -354,6 +392,13 @@ def summarize_budget_tool(
         "budget": budget,
         "current_step": "order_generation",
         "updated_at": time.time(),
+        "messages": [
+            ToolMessage(
+                content=f"预算汇总完成: 总计 {total} 元, "
+                        f"人均每日 {per_person_per_day:.0f} 元 ({total_people}人 × {travel_days}天)",
+                tool_call_id=runtime.tool_call_id,
+            )
+        ],
     }, goto="agent")
 
 
@@ -379,10 +424,17 @@ def generate_order_tool(
         f"(目的地: {dest}, {days}天, 总预算: {budget_total})"
     )
 
+    report_msg = f"旅行规划已完成, 订单 {order_id} 已生成。感谢使用知行智能旅游规划助手!"
     return Command(update={
         "order_id": order_id,
-        "report": f"旅行规划已完成, 订单 {order_id} 已生成。感谢使用知行智能旅游规划助手!",
+        "report": report_msg,
         "updated_at": time.time(),
+        "messages": [
+            ToolMessage(
+                content=f"订单已生成: {order_id} (目的地: {dest}, {days}天, 预算: {budget_total}元)",
+                tool_call_id=runtime.tool_call_id,
+            )
+        ],
     }, goto="__end__")
 
 
@@ -447,7 +499,16 @@ def go_back_to_step(
             update[field] = None
         app_logger.info(f"[{runtime.tool_call_id}] 已清除字段: {cleanup_fields}")
 
-    # ── 5. 返回 Command ──
+    # ── 5. 追加 ToolMessage ──
+    clear_note = "已清除后续数据" if clear_subsequent_data else "保留已有数据"
+    update["messages"] = [
+        ToolMessage(
+            content=f"回退: {current} → {target_step} (原因: {reason}, {clear_note})",
+            tool_call_id=runtime.tool_call_id,
+        )
+    ]
+
+    # ── 6. 返回 Command ──
     return Command(update=update, goto="agent")
 
 
