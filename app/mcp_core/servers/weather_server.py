@@ -1,49 +1,83 @@
 """
-高德天气 MCP Server
-
-暴露 get_weather_forecast(city_adcode) 工具，
-根据城市 adcode 查询未来 7 天天气预报。
+天气服务 MCP Server
+使用高德天气 API 查询天气预报
 """
-import httpx
-from app.config import settings
 
+import os
+import json
+import httpx
+from dotenv import load_dotenv
+from fastmcp import FastMCP
+
+# 加载环境变量
+load_dotenv()
+
+# 初始化 MCP 服务
+mcp = FastMCP("weather-service")
+
+# 读取配置
+AMAP_API_KEY = os.getenv("AMAP_API_KEY")
 AMAP_WEATHER_URL = "https://restapi.amap.com/v3/weather/weatherInfo"
 
-_FORECAST_FIELD_MAP = {
-    "date": "date",
-    "week": "week",
-    "dayweather": "day_weather",
-    "nightweather": "night_weather",
-    "daytemp": "day_temp",
-    "nighttemp": "night_temp",
-    "daywind": "day_wind",
-    "nightwind": "night_wind",
-    "daypower": "day_power",
-    "nightpower": "night_power",
-}
 
+@mcp.tool()
+async def get_weather_forecast(city_adcode: str) -> str:
+    """
+    查询城市未来天气预报
 
-def _transform_forecast(cast: dict) -> dict:
-    """将高德字段名转换为下划线风格"""
-    return {_FORECAST_FIELD_MAP[k]: v for k, v in cast.items() if k in _FORECAST_FIELD_MAP}
+    Args:
+        city_adcode: 城市/区域的 adcode 编码（例如：北京="110000", 上海="310000",
+            西安="610100", 成都="510100", 深圳="440300", 杭州="330100",
+            广州="440100", 南京="320100", 重庆="500000", 武汉="420100"）。
+            注意：API 不支持直接使用中文城市名，必须使用 adcode。
 
-
-async def _fetch_amap_forecast(adcode: str) -> dict:
-    """调用高德天气 API，返回原始响应 dict"""
-    api_key = settings.amap_api_key
-    if not api_key:
-        return {"error": "天气服务未配置，请设置 AMAP_API_KEY"}
+    Returns:
+        JSON 格式的未来天气预报数据（包含白天/晚上的天气、温度、风力等）。
+    """
+    if not AMAP_API_KEY:
+        return json.dumps({"error": "未配置 AMAP_API_KEY"}, ensure_ascii=False)
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(AMAP_WEATHER_URL, params={
-            "key": api_key,
-            "city": adcode,
-            "extensions": "all",
-        })
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            response = await client.get(
+                AMAP_WEATHER_URL,
+                params={
+                    "key": AMAP_API_KEY,
+                    "city": city_adcode,
+                    "extensions": "all",
+                    "output": "JSON"
+                }
+            )
+
+            data = response.json()
+
+            if data.get("status") != "1":
+                return json.dumps({
+                    "error": data.get("info", "查询失败"),
+                    "infocode": data.get("infocode")
+                }, ensure_ascii=False)
+
+            forecasts = data.get("forecasts", [])
+            if not forecasts:
+                return json.dumps({"error": "未找到天气数据"}, ensure_ascii=False)
+
+            forecast = forecasts[0]
+
+            result = {
+                "city": forecast.get("city"),
+                "adcode": forecast.get("adcode"),
+                "province": forecast.get("province"),
+                "reporttime": forecast.get("reporttime"),
+                "casts": forecast.get("casts", [])
+            }
+
+            return json.dumps(result, ensure_ascii=False, indent=2)
+
+        except httpx.TimeoutException:
+            return json.dumps({"error": "请求超时"}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
 
 
-async def get_weather_forecast(city_adcode: str) -> dict:
-    """查询城市未来7天天气预报（Task 4 实现）"""
-    raise NotImplementedError("get_weather_forecast 将在 Task 4 实现")
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
