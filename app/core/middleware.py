@@ -16,6 +16,8 @@ class StepConfigResolver:
     def __init__(self, step_config: dict):
         self._step_config = step_config
 
+
+    #状态注入current_step,返回对应步骤的system_prompt and tools
     def resolve(self, state: dict) -> tuple:
         """
         根据 current_step 解析步骤配置。

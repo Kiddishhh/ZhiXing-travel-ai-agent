@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(python -c \"from app.tools import query_destination_info; print\\(f'name={query_destination_info.name}'\\); print\\(f'description={query_destination_info.description[:60]}'\\); import json; print\\(f'args_schema={json.dumps\\(query_destination_info.args_schema.model_json_schema\\(\\)[\\\\\"properties\\\\\"], ensure_ascii=False\\)}'\\)\")",
+      "Bash(python -m pytest tests/test_agents/test_destination_router.py -v)",
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(f'app/tools/{f}.py', encoding='utf-8'\\).read\\(\\)\\) for f in ['transport_tools','accommodation_tools','food_tools','budget_tools','order_tools']]; print\\('All syntax OK'\\)\")",
+      "Bash(python -c \"from app.tools import TOOL_REGISTRY; print\\(f'{len\\(TOOL_REGISTRY\\)} tools total'\\)\")",
+      "Bash(git commit *)",
+      "Bash(python -c \"from app.tools import TOOL_REGISTRY; [print\\(f'  {k}'\\) for k in sorted\\(TOOL_REGISTRY.keys\\(\\)\\)]\")",
+      "Bash(python -c \"import asyncio; c = asyncio.run\\(__import__\\('app.agents.handoffs.step_config', fromlist=['get_step_config']\\).get_step_config\\(\\)\\); print\\(f'{len\\(c\\)} steps'\\); [print\\(f'  {k}: {len\\(v[\\\\\"tools\\\\\"]\\)} tools'\\) for k,v in c.items\\(\\)]\")"
+    ]
+  }
+}
