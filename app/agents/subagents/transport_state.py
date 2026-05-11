@@ -4,7 +4,7 @@
 包含三种交通方式的详细 TypedDict 和 TransportState（子图内部状态）。
 """
 from operator import add
-from typing import Annotated, NotRequired, TypedDict, List
+from typing import Annotated, NotRequired, TypedDict, Dict, List
 
 from app.core.state import TransportType
 
@@ -32,7 +32,7 @@ class TrainOption(TypedDict):
     arrival_time: str                 # 到站时间
     duration: str                     # 运行时长
     seat_types: List[str]             # 可选座位类型
-    prices: dict[str, float]          # 各座位类型价格
+    prices: Dict[str, float]          # 各座位类型价格
     available: bool                   # 是否有票
 
 
@@ -60,9 +60,9 @@ class TransportState(TypedDict):
     passenger_count: NotRequired[int]
 
     # 查询结果（累加）
-    flight_options: Annotated[list[FlightOption], add]
-    train_options: Annotated[list[TrainOption], add]
-    driving_routes: Annotated[list[DrivingRoute], add]
+    flight_options: Annotated[List[FlightOption], add]
+    train_options: Annotated[List[TrainOption], add]
+    driving_routes: Annotated[List[DrivingRoute], add]
 
     # 最终选择
     selected_flight: NotRequired[FlightOption]
