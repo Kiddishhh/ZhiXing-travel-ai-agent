@@ -134,7 +134,7 @@ class MCPClientManager:
         if self._client is None:
             raise RuntimeError("MCP 客户端未初始化，请先调用 initialize()")
 
-        if self._tools:
+        if self._tools is not None:
             return self._tools
 
         self._tools = await self._client.get_tools()
