@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     # ============== MCP 服务配置 ==============
     amap_api_key: str = Field(default="", alias="AMAP_API_KEY")
     tavily_api_key: str = Field(default="", alias="TAVILY_API_KEY")
+    variflight_api_key: str = Field(default="", alias="VARIFLIGHT_API_KEY")
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(BASE_DIR, ".env"),    # 自动拼接路径，不管代码在哪运行都能找到
