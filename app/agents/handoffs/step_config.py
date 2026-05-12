@@ -24,9 +24,9 @@ from app.tools.state_transition import (
     check_current_progress,
 )
 from app.tools.router_query import query_destination_info
-from app.tools.transport_tools import query_flight, query_train, query_driving_route
-from app.tools.accommodation_tools import query_hotels, query_hostels
-from app.tools.food_tools import query_restaurants, query_local_food
+from app.tools.transport_tools import query_transport_options
+from app.tools.accommodation_tools import query_accommodation
+from app.tools.food_tools import query_food
 from app.tools.budget_tools import calculate_budget
 
 
@@ -106,13 +106,11 @@ async def get_step_config() -> dict:
 - 目的地: {selected_destination}
 
 **可用的交通查询工具**:
-- `query_flight` — 航班查询
-- `query_train` — 高铁/火车查询
-- `query_driving_route` — 自驾路线查询
+- `query_transport_options` — 统一交通查询 (支持航班/高铁/自驾)
 
 **任务**:
-1. 推荐交通方式: ✈️ 航班 / 🚄 高铁 / 🚗 自驾
-2. 调用对应工具查询具体信息
+1. 推荐交通方式: flight(航班) / train(高铁) / driving(自驾)
+2. 调用 `query_transport_options` 查询具体信息
 3. 用户确认后 → 调用 `select_transport_tool`
 
 **回退选项**:
@@ -120,7 +118,7 @@ async def get_step_config() -> dict:
 - 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
 """,
             "tools": [
-                query_flight, query_train, query_driving_route,
+                query_transport_options,
                 select_transport_tool,
                 go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
@@ -140,8 +138,7 @@ async def get_step_config() -> dict:
 - 交通: {selected_transport}
 
 **可用的住宿查询工具**:
-- `query_hotels` — 酒店查询
-- `query_hostels` — 民宿查询
+- `query_accommodation` — 住宿查询 (支持酒店/民宿/青旅)
 
 **任务**:
 1. 推荐住宿类型: 🏨 星级酒店 / 🏠 民宿 / 🛏️ 青旅 (可多选)
@@ -154,7 +151,7 @@ async def get_step_config() -> dict:
 - 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
 """,
             "tools": [
-                query_hotels, query_hostels,
+                query_accommodation,
                 select_accommodation_tool,
                 go_back_to_transport, go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
@@ -174,8 +171,7 @@ async def get_step_config() -> dict:
 - 住宿类型: {selected_accommodation_types}
 
 **可用的餐饮查询工具**:
-- `query_restaurants` — 餐厅查询
-- `query_local_food` — 本地小吃查询
+- `query_food` — 餐饮查询 (支持特色美食/连锁快餐/本地小吃)
 
 **任务**:
 1. 推荐餐饮类型: 🍜 特色美食 / 🍔 连锁快餐 / 🍘 本地小吃 (可多选)
@@ -189,7 +185,7 @@ async def get_step_config() -> dict:
 - 重新规划整个旅行 → `go_back_to_requirement(reason="...")`
 """,
             "tools": [
-                query_restaurants, query_local_food,
+                query_food,
                 select_food_tool,
                 go_back_to_accommodation, go_back_to_transport,
                 go_back_to_destination, go_back_to_requirement,

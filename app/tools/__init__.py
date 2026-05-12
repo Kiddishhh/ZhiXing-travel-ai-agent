@@ -57,20 +57,16 @@ register_tool("go_back_to_itinerary", go_back_to_itinerary)
 register_tool("go_back_to_budget", go_back_to_budget)
 register_tool("check_current_progress", check_current_progress)
 
-# ── 注册业务占位工具 ──
-from .transport_tools import query_driving_route, query_flight, query_train
-from .accommodation_tools import query_hotels, query_hostels
-from .food_tools import query_restaurants, query_local_food
+# ── 注册业务工具 ──
+from .transport_tools import query_transport_options
+from .accommodation_tools import query_accommodation
+from .food_tools import query_food
 from .budget_tools import calculate_budget
 from .order_tools import create_order
 
-register_tool("query_driving_route", query_driving_route)
-register_tool("query_flight", query_flight)
-register_tool("query_train", query_train)
-register_tool("query_hotels", query_hotels)
-register_tool("query_hostels", query_hostels)
-register_tool("query_restaurants", query_restaurants)
-register_tool("query_local_food", query_local_food)
+register_tool("query_transport_options", query_transport_options)
+register_tool("query_accommodation", query_accommodation)
+register_tool("query_food", query_food)
 register_tool("calculate_budget", calculate_budget)
 register_tool("create_order", create_order)
 
