@@ -19,7 +19,7 @@ async def test_print_mcp_tools():
     print("正在初始化 MCP 客户端管理器...")
 
     manager = await MCPClientManager.get_instance(
-        servers=["weather", "search", "amap", "12306-mcp", "VariFlight-Aviation"]
+        servers=["weather", "search", "amap", "12306-mcp", "VariFlight-Aviation", "aigohotel-mcp"]
     )
 
     try:
@@ -31,15 +31,19 @@ async def test_print_mcp_tools():
 
         # 打印工具详情
         for i, tool in enumerate(tools, 1):
-            print(f"工具 [{i}]")
-            print(f"名称: {tool.name}")
-            print(f"描述: {tool.description}")
-            print(f"参数结构:")
             try:
-                print(json.dumps(tool.args, indent=2, ensure_ascii=False))
-            except Exception:
-                print(f"  {tool.args}")
-            print("-" * 60)
+                print(f"工具 [{i}]")
+                print(f"名称: {tool.name}")
+                print(f"描述: {tool.description}")
+                print(f"参数结构:")
+                try:
+                    print(json.dumps(tool.args, indent=2, ensure_ascii=False))
+                except Exception:
+                    print(f"  {repr(tool.args)}")
+                print("-" * 60)
+            except Exception as exc:
+                print(f"工具 [{i}] 解析失败: {exc}")
+                print("-" * 60)
 
         assert len(tools) > 0, "应该至少有一个工具"
 
