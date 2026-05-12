@@ -12,9 +12,7 @@ from app.utils.logger import app_logger
 
 async def _get_aviation_tools():
     """获取航班相关的MCP工具"""
-    manager = await get_mcp_client(
-        servers=["weather", "search", "amap", "12306-mcp", "VariFlight-Aviation"]
-    )
+    manager = await get_mcp_client()
     all_tools = await manager.get_tools()
 
     # 筛选航班工具

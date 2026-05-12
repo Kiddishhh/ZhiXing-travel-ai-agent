@@ -19,7 +19,8 @@ async def _get_helper_tools():
     helper_tools = [
         tool for tool in all_tools
         if any(keyword in tool.name.lower() for keyword in [
-            'get-current-date', 'maps_around_search'
+            'get-current-date', 'maps_around_search',
+            'getfutureweather'
         ])
     ]
 
@@ -100,7 +101,7 @@ async def create_transport_coordinator():
     llm = ChatTongyi(
         model=settings.qwen_model_name,
         api_key=settings.dashscope_api_key,
-        temperature=0.1
+        temperature=0.7
     )
 
     # 获取辅助工具
@@ -127,6 +128,7 @@ async def create_transport_coordinator():
 **辅助工具（按需使用）**：
 - get-current-date：获取今天日期（调用需要时间的工具前，获取实时时间）
 - maps_around_search：搜索周边信息（如机场周边、火车站周边）
+- getFutureWeatherByAirport：查询机场未来天气
 
 **工作流程**：
 1. 理解用户的交通需求（出发地、目的地、日期、人数）
@@ -162,7 +164,7 @@ if __name__ == "__main__":
 
         coordinator = await create_transport_coordinator()
 
-        test_query = "帮我查一下明天从北京到上海的交通方式"
+        test_query = "我想从北京去上海，明天出发，帮我推荐交通方式"
 
         print(f"\n用户提问: {test_query}")
         print("-" * 30)

@@ -12,9 +12,7 @@ from app.utils.logger import app_logger
 
 async def _get_train_tools():
     """获取火车票相关的MCP工具"""
-    manager = await get_mcp_client(
-        servers=["weather", "search", "amap", "12306-mcp", "VariFlight-Aviation"]
-    )
+    manager = await get_mcp_client()
     all_tools = await manager.get_tools()
 
     # 筛选火车票工具
