@@ -28,6 +28,7 @@ from app.tools.transport_tools import query_transport_options
 from app.tools.accommodation_tools import query_accommodation
 from app.tools.food_tools import query_food
 from app.tools.budget_tools import calculate_budget
+from app.tools.order_tools import create_order
 
 
 async def get_step_config() -> dict:
@@ -270,7 +271,7 @@ async def get_step_config() -> dict:
 **当前阶段**: 订单生成 (第 8 步, 共 8 步)
 
 **任务**:
-1. 确认用户准备下单
+1. 调用 `create_order` 生成最终订单摘要供用户确认
 2. 展示完整旅行计划摘要
 3. 用户确认后 → 调用 `generate_order_tool` (自动结束流程)
 
@@ -285,6 +286,7 @@ async def get_step_config() -> dict:
 - 回到任意步骤 → `go_back_to_step("<step_name>", reason="...")`
 """,
             "tools": [
+                create_order,
                 generate_order_tool,
                 go_back_to_budget, go_back_to_itinerary, go_back_to_food,
                 go_back_to_accommodation, go_back_to_transport,
