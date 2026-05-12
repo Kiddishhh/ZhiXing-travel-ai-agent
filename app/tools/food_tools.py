@@ -40,8 +40,12 @@ async def query_food(
             geo_tool = t
         elif 'maps_around_search' in name:
             around_tool = t
-        elif 'search' in name:
+        elif 'search_travel_info' in name:
             search_tool = t
+
+    # 检查工具可用性
+    if not any([geo_tool, around_tool, search_tool]):
+        return "⚠️ 餐饮查询服务暂不可用，请稍后重试。"
 
     results = []
 
