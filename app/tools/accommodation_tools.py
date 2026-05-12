@@ -2,7 +2,7 @@
 住宿查询工具
 调用 aigohotel-mcp 查询酒店/民宿
 """
-from langchain_core.tools import tool
+from langchain.tools import tool
 from app.mcp_core.client import get_mcp_client
 from app.utils.logger import app_logger
 
@@ -38,7 +38,7 @@ async def query_accommodation(
     # 筛选 aigohotel 工具
     hotel_tools = [
         t for t in all_tools
-        if any(kw in t.name.lower() for kw in ['searchhotels', 'gethoteldetail'])
+        if any(kw in t.name.lower() for kw in ['searchhotels'])
     ]
 
     search_tool = None
