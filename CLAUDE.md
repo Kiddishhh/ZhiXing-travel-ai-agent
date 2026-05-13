@@ -11,14 +11,14 @@ python scripts/init_rag.py
 # Test RAG retrieval + reranking
 python scripts/test_rag.py
 
-# Test Qwen LLM connection
+# Test LLM connection
 python scripts/test_llm.py
 
 # Initialize Postgres Checkpointer + Store tables
 python scripts/init_db.py
 
-# Run all tests
-python -m pytest
+# Run all tests (exclude slow network-dependent tests)
+python -m pytest tests/ -v --ignore=tests/test_api --ignore=scripts
 
 # Run agent tests
 python -m pytest tests/test_agents/ -v
@@ -26,100 +26,121 @@ python -m pytest tests/test_agents/ -v
 # Run MCP integration tests
 python -m pytest tests/test_mcp/ -v
 
+# Run tool unit tests
+python -m pytest tests/test_tools/ -v
+
 # Run a single test
-python -m pytest tests/test_agents/test_destination_router.py::test_explore_only -v
+python -m pytest tests/test_agents/test_context_compression.py::TestGuardCompression::test_compresses_when_exceeds_threshold -v
 
 # Check syntax of all Python files
-python -c "import ast, sys, pathlib; [ast.parse(p.read_text(encoding='utf-8')) for p in pathlib.Path('.').rglob('*.py')]"
+python -c "import ast; [ast.parse(open(p, encoding='utf-8').read()) for p in __import__('pathlib').Path('.').rglob('*.py') if 'venv' not in str(p)]"
 ```
 
 ## Architecture
 
-A LangGraph-based Chinese travel planning assistant with an 8-step sequential workflow and MCP-based tool integration.
+A LangGraph-based Chinese travel planning assistant with an 8-step sequential workflow, context compression, and MCP-based tool integration.
 
-### Two Graph Systems
+### Main Graph (`app/agents/handoffs/graph.py`)
 
-**1. Handoffs Main Flow** (`app/agents/handoffs/graph.py`) — The primary agent. Single `agent` node + `ToolNode` loop (`START → agent ⇄ tools → END`). Uses `StepConfigResolver` middleware to inject step-specific prompts and tools at each turn based on `current_step`. The agent progresses through 8 steps by calling state transition tools that return `Command(goto=...)`.
+```
+START → guard → agent ──→ tools → guard → agent (loop)
+                   └── (no tool_calls) → END
+```
 
-**2. Destination Router** (`app/agents/routers/destination_router.py`) — Parallel dispatch. LLM classifier → `Send` API parallel dispatch → explore (ChromaDB RAG) / weather agents → compile markdown report. Used as a tool (`query_destination_info`) by the main flow's step 2.
+Three custom nodes:
+- **guard** — Token-aware context compression. Counts tokens via `count_tokens_approximately`, compresses old messages into a `context_summary` when exceeding 12000 tokens. Keeps last 10 messages. Fallback to truncation on LLM failure.
+- **agent** — Three-layer message assembly: (1) step prompt from `StepConfigResolver` (instruction priority), (2) `[已收集的旅行信息]` summary if exists (fact reference), (3) conversation history. All SystemMessages are ephemeral — only AI response goes to `state["messages"]`.
+- **tools** — `ToolNode` with `_wrap_tool_error` handler that converts Pydantic validation errors into friendly guidance prompts.
+
+### Context Compression (`graph.py`)
+
+`_make_guard_node(llm)` — runs before every agent call. When token count exceeds `COMPRESSION_MAX_TOKENS` (12000), splits messages into old (compress) and recent (keep 10), calls `ChatOpenAI` to generate a facts-only summary (≤800 chars, no AI behavior description), removes old messages via `RemoveMessage`, and stores summary in `state["context_summary"]`. Previous summaries are merged on re-compression.
+
+### State (`app/core/state.py`)
+
+`TravelState(MessagesState)` — `messages` holds pure conversation (Human/AI/Tool only, no SystemMessages). Key fields:
+- `current_step` — one of 8 `PlanningStep` values
+- `context_summary` — compressed history (set by guard, used ephemerally by agent)
+- `user_requirement` — dict with `budget_level` and `travel_styles` as `Optional` (tool auto-computes them)
+- `STEP_CLEANUP_MAP` — defines which fields to nullify per step on rollback
 
 ### 8-Step Workflow
 
-Defined in `app/core/state.py` as `PlanningStep` literal, with `STEP_CLEANUP_MAP` for rollback:
+Defined in `app/core/state.py` as `PlanningStep` literal:
 
 | # | Step Key | Purpose |
 |---|----------|---------|
-| 1 | `requirement_collection` | Gather user needs (departure, dates, budget, style) |
-| 2 | `destination_recommendation` | Recommend 3 destinations via RAG |
-| 3 | `transport_planning` | Flight/train/driving via transport coordinator |
+| 1 | `requirement_collection` | Gather user needs |
+| 2 | `destination_recommendation` | Recommend 3 destinations |
+| 3 | `transport_planning` | Flight/train/driving |
 | 4 | `accommodation_planning` | Hotels/hostels |
 | 5 | `food_planning` | Restaurants/local food |
-| 6 | `itinerary_generation` | LLM generates daily itinerary JSON |
-| 7 | `budget_summarization` | Aggregate costs, validate against budget |
+| 6 | `itinerary_generation` | LLM generates daily itinerary |
+| 7 | `budget_summarization` | Aggregate + validate costs |
 | 8 | `order_generation` | Final order, ends flow |
 
 ### Step Configuration System
 
-`app/agents/handoffs/step_config.py` — Central config hub. `get_step_config()` returns a dict with 8 step configs, each containing:
-- `prompt`: System prompt template with `{field}` placeholders rendered from state
-- `tools`: List of callable tools available at this step
-- `requires`: State fields that must exist before this step can run
+`app/agents/handoffs/step_config.py` — Each step's prompt has three sections:
+- **⚠️ 关键规则** — hard gate prohibiting auto-advancing without user confirmation
+- **📋 查询工具 / 🔒 确认工具 / ↩️ 回退工具** — tools categorized by permission level
+- **任务** — step-specific instructions
 
-`app/core/middleware.py` — `StepConfigResolver` reads `current_step` from state, validates prerequisites, renders the prompt template, and returns the prompt + tools for the LLM call.
+`app/core/middleware.py` — `StepConfigResolver` reads `current_step`, validates prerequisites, renders `{field}` placeholders from state, returns prompt + tools.
 
-### Transport Layer (Coordinator + Subagents)
+### State Transition Tools (`app/tools/state_transition.py`)
 
-`app/agents/subagents/transport_coordinator.py` — Supervisor agent that wraps three subagents as `@tool` functions (`query_flights`, `query_trains`, `plan_driving_route`). Called by the unified `query_transport_options` tool in step 3.
+17 tools use `Command(update={...})` **without `goto`** — routing is handled by the graph edge `tools → guard → agent`. The only exception: `generate_order_tool` uses `goto="__end__"` to terminate the graph. All transition tool ToolMessages contain "brake signals" that guide the LLM to introduce the next step to the user and wait for confirmation.
 
-Each subagent filters relevant tools from the MCP client:
-- `flight_agent.py` — VariFlight-Aviation MCP tools
-- `train_agent.py` — 12306 MCP tools (ModelScope-hosted)
-- `driving_agent.py` — Amap MCP tools (geocoding + directions)
+### Query Tools
+
+Data-fetching tools return `str` (Markdown-formatted results):
+- `query_destination_info` — RAG + weather via destination router
+- `query_transport_options` — flight/train/driving via transport coordinator
+- `query_accommodation` — hotels via aigohotel-mcp
+- `query_food` — Amap POI + Tavily search (direct httpx API calls)
+- `calculate_budget` / `create_order` — compute from TravelState
+
+### Transport Layer
+
+`app/agents/subagents/transport_coordinator.py` — Supervisor wrapping three subagents:
+- `flight_agent.py` — VariFlight-Aviation MCP
+- `train_agent.py` — 12306 MCP (ModelScope-hosted)
+- `driving_agent.py` — Amap MCP (geocoding + directions)
 
 ### MCP Core (`app/mcp_core/`)
 
-`MCPClientManager` (singleton) manages 6 MCP servers:
+`MCPClientManager` (singleton) manages 6 MCP servers: weather (stdlib), search (stdlib), amap (HTTP), 12306-mcp (streamable_http), VariFlight-Aviation (streamable_http), aigohotel-mcp (streamable_http).
 
-| Server | Transport | Purpose |
-|--------|-----------|---------|
-| `weather` | stdio (local FastMCP) | Amap weather API |
-| `search` | stdio (local FastMCP) | Tavily search API |
-| `amap` | HTTP | Amap geocoding/directions |
-| `12306-mcp` | streamable_http | 12306 train tickets (ModelScope) |
-| `VariFlight-Aviation` | streamable_http | Flight data |
-| `aigohotel-mcp` | streamable_http | Accommodation search |
+### LLM Configuration
 
-`get_mcp_client()` (no args) returns the singleton with all 6 servers. Pass `servers=[...]` to limit.
-
-### Tools Registry
-
-`app/tools/__init__.py` — `TOOL_REGISTRY` dict with `register_tool()`. All 24 tools registered here; the handoffs graph collects all values as the ToolNode. State transition tools in `app/tools/state_transition.py` use LangGraph's `Command(goto=...)` pattern to advance steps.
-
-### RAG Pipeline
-
+All LLM calls use `ChatOpenAI` with DashScope's OpenAI-compatible endpoint:
+```python
+ChatOpenAI(
+    model="qwen3.6-plus",
+    api_key=settings.dashscope_api_key,
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+)
 ```
-data/documents/*.md → DocumentManager → ParentDocumentSplitter (parent 1000ch/child 200ch)
-  → HybridRetriever (BM25 + Dense + RRF fusion, k=60)
-    → LLMReranker (Qwen-turbo pointwise scoring, top_k=5)
-```
+Model name default in `app/config.py` → `settings.qwen_model_name`. Structured output in destination router uses `method="function_calling"` to avoid `json_object` mode issues.
 
-### Key Design Patterns
+### Key Patterns
 
-- **Settings** (`app/config.py`): pydantic-settings, loaded from `.env` via `get_settings()` cache.
-- **Logger** (`app/utils/logger.py`): loguru — console (colorized, DEBUG+), file rotation (JSON, INFO+, 10MB/7-day), error-only file.
-- **State**: `TravelState(MessagesState)` — all fields `NotRequired`. `Command(goto=...)` drives step transitions. `Annotated[list, add]` reducer for parallel agent results in the router.
-- **Testing**: `pytest` + `pytest-asyncio` (`@pytest.mark.asyncio`). No `pytest.ini` or `conftest.py`. MCP singleton tests use `MCPClientManager.reset_instance()` fixture.
+- **Settings**: pydantic-settings from `.env`, cached `get_settings()`
+- **Logger**: loguru — console (colorized), file rotation (JSON, 10MB/7-day), error-only file
+- **State updates**: `Annotated[list, add]` reducer for parallel results; `Command(update)` without goto for step transitions
+- **Error handling**: `_wrap_tool_error` in graph.py wraps tool exceptions as guidance prompts; fallback compression on LLM failure
+- **Testing**: `pytest` + `pytest-asyncio` (`@pytest.mark.asyncio`), mock LLM via `AsyncMock`
 
 ### Known Issues
 
-- `app/tools/accommodation_tools.py`, `budget_tools.py`, `food_tools.py`, `order_tools.py` have been cleared (0 bytes) but are still imported in `app/tools/__init__.py` and referenced in `app/agents/handoffs/step_config.py`. These imports will fail at runtime.
-- `TOOL_REGISTRY` still contains entries (`query_hotels`, `query_hostels`, `query_restaurants`, `query_local_food`, `calculate_budget`, `create_order`) whose implementations no longer exist.
-- Duplicate `TransportState` definitions in both `app/core/transport_state.py` and `app/agents/subagents/transport_state.py`.
+- Duplicate `TransportState` definitions in `app/core/transport_state.py` and `app/agents/subagents/transport_state.py`
+- MCP servers (aigohotel-mcp, 12306-mcp) have intermittent connectivity issues — accommodation/transport tests may fail on network errors
+- DashScope free tier quota limits — `test_destination_router.py` may fail with 403 when quota exhausted
 
 ### Environment
 
 - Python >= 3.11, package manager: `uv`
-- Dependencies in `pyproject.toml` + `uv.lock`
-- `.env` required with: `DASHSCOPE_API_KEY`, `LANGSMITH_API_KEY`, Postgres + Redis connection strings, `AMAP_API_KEY`, `TAVILY_API_KEY`, `VARIFLIGHT_API_KEY`, `AIGOHOTEL_MCP_API`
-- Other services: PostgreSQL (checkpointer), Redis, ChromaDB (local file)
+- `.env` required: `DASHSCOPE_API_KEY`, `LANGSMITH_API_KEY`, Postgres + Redis connection strings, `AMAP_API_KEY`, `TAVILY_API_KEY`, `VARIFLIGHT_API_KEY`, `AIGOHOTEL_MCP_API`
+- Services: PostgreSQL (checkpointer), Redis, ChromaDB (local file)
 - On Windows, scripts set `asyncio.WindowsSelectorEventLoopPolicy()`
