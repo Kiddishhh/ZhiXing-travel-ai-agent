@@ -186,6 +186,9 @@ class TravelState(MessagesState):
     approval_pending: NotRequired[bool]    # 是否等待审批
     approval_reason: NotRequired[str]      # 审批原因
 
+    # ── 上下文压缩 ──
+    context_summary: NotRequired[str]  # 历史对话压缩摘要（由 guard 节点生成）
+
     # ── 元数据 ──
     user_id: NotRequired[str]        # 用户 ID
     session_id: NotRequired[str]     # 会话 ID

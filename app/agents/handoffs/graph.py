@@ -78,9 +78,19 @@ def _make_guard_node(llm: ChatTongyi, max_tokens: int = None):
             f"[{type(m).__name__}]: {m.content if hasattr(m, 'content') else str(m)}"
             for m in old_msgs
         ])
-        compression_prompt = COMPRESSION_SYSTEM_PROMPT.format(
-            messages_to_compress=messages_text
-        )
+
+        # 如果已有历史摘要，合并重压缩
+        previous_summary = state.get("context_summary")
+        if previous_summary:
+            compression_prompt = (
+                f"之前的对话摘要：\n{previous_summary}\n\n"
+                f"新的待压缩对话：\n{messages_text}\n\n"
+                f"请将以上内容合并为一份完整的简洁摘要（不超过 500 字）："
+            )
+        else:
+            compression_prompt = COMPRESSION_SYSTEM_PROMPT.format(
+                messages_to_compress=messages_text
+            )
 
         try:
             response = await llm.ainvoke([HumanMessage(content=compression_prompt)])
@@ -92,23 +102,21 @@ def _make_guard_node(llm: ChatTongyi, max_tokens: int = None):
             app_logger.error(f"上下文压缩失败: {e}, 降级为简单截断")
             summary = None
 
-        # 构建返回结果：RemoveMessage 删除旧消息 + 可选的摘要 SystemMessage
+        # 构建返回结果：RemoveMessage 删除旧消息
         import uuid as _uuid
 
         result_messages = []
         for msg in old_msgs:
             msg_id = getattr(msg, 'id', None) or getattr(msg, 'message_id', None)
-            # 消息若无 id (如测试中直接构造的消息), 生成一个临时 id
             if msg_id is None:
                 msg_id = str(_uuid.uuid4())
             result_messages.append(RemoveMessage(id=msg_id))
 
+        result = {"messages": result_messages}
         if summary:
-            result_messages.append(
-                SystemMessage(content=f"[对话历史摘要]\n\n{summary}")
-            )
+            result["context_summary"] = summary
 
-        return {"messages": result_messages}
+        return result
 
     return guard_node
 
@@ -157,10 +165,21 @@ def _make_agent_node(llm: ChatTongyi, resolver: StepConfigResolver):
         # 根据 current_step 解析 prompt + tools
         system_prompt, tools = resolver.resolve(state)
 
-        # 将 system_prompt 作为 SystemMessage 注入消息列表
-        messages = list(state["messages"])
-        system_msg = SystemMessage(content=system_prompt)
-        messages.insert(0, system_msg)
+        # 构建注入 LLM 的消息列表（临时，不存入 state）
+        messages = []
+
+        # 1. 上下文摘要（由 guard 节点生成，临时注入）
+        context_summary = state.get("context_summary")
+        if context_summary:
+            messages.append(
+                SystemMessage(content=f"[对话历史摘要]\n\n{context_summary}")
+            )
+
+        # 2. 步骤 prompt（由 StepConfigResolver 生成，临时注入）
+        messages.append(SystemMessage(content=system_prompt))
+
+        # 3. 对话历史（Human/AI/Tool 消息，来自 state）
+        messages.extend(state["messages"])
 
         # 绑定工具到 LLM，发起调用
         llm_with_tools = llm.bind_tools(tools)

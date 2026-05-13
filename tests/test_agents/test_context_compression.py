@@ -71,7 +71,7 @@ class TestGuardCompression:
 
     @pytest.mark.asyncio
     async def test_compresses_when_exceeds_threshold(self):
-        """超阈值时返回 RemoveMessage + SystemMessage(摘要)"""
+        """超阈值时返回 RemoveMessage + context_summary"""
         from app.agents.handoffs.graph import _make_guard_node
 
         llm = make_mock_llm("[摘要] 用户想去北京旅行，预算5000元")
@@ -88,9 +88,11 @@ class TestGuardCompression:
         result_msgs = result["messages"]
 
         has_remove = any(isinstance(m, RemoveMessage) for m in result_msgs)
-        has_summary = any(isinstance(m, SystemMessage) for m in result_msgs)
         assert has_remove, "应包含 RemoveMessage"
-        assert has_summary, "应包含摘要 SystemMessage"
+
+        # 摘要存入 context_summary 字段，而非 messages 中的 SystemMessage
+        assert "context_summary" in result
+        assert result["context_summary"] == "[摘要] 用户想去北京旅行，预算5000元"
 
         llm.ainvoke.assert_called_once()
 
@@ -146,7 +148,7 @@ class TestGuardFallback:
 
     @pytest.mark.asyncio
     async def test_fallback_on_llm_error(self):
-        """LLM 调用失败时降级为简单截断，仍删除旧消息但不添加摘要"""
+        """LLM 调用失败时降级为简单截断，仍删除旧消息但不设置 context_summary"""
         from app.agents.handoffs.graph import _make_guard_node
 
         llm = make_mock_llm()
@@ -165,7 +167,5 @@ class TestGuardFallback:
         has_remove = any(isinstance(m, RemoveMessage) for m in result_msgs)
         assert has_remove, "降级时仍应删除旧消息"
 
-        has_summary = any(
-            isinstance(m, SystemMessage) for m in result_msgs
-        )
-        assert not has_summary, "降级时不应添加摘要"
+        # 降级时不设置 context_summary
+        assert "context_summary" not in result
