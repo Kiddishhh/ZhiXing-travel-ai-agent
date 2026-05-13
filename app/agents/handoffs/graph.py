@@ -127,7 +127,7 @@ async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
     resolver = await create_step_config_resolver()
 
     llm = ChatTongyi(
-        model="qwen-max",
+        model="qwen3.6-plus",
         api_key=settings.dashscope_api_key,
     )
 

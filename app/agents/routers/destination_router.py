@@ -76,7 +76,7 @@ def classifier_node(state: DestinationRouterState) -> dict:
     destination = state["destination"]
 
     llm = ChatTongyi(
-        model="qwen-max",
+        model="qwen3.6-plus",
         temperature=0.0,
         api_key=settings.dashscope_api_key,
     )

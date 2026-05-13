@@ -17,7 +17,7 @@ def test_qwen_connection():
     try:
         # 初始化模型
         model = ChatTongyi(
-            model="qwen-max",
+            model="qwen3.6-plus",
             api_key=os.getenv("DASHSCOPE_API_KEY"),
             temperature=0.7
         )
