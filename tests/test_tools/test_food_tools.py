@@ -187,3 +187,80 @@ class TestSearchTavily:
 
         result = await _search_tavily(mock_client, "西安 美食")
         assert result is None
+
+
+class TestFormatPoiResults:
+    """_format_poi_results: POI 列表 → Markdown 表格"""
+
+    def test_formats_pois_as_markdown_table(self):
+        from app.tools.food_tools import _format_poi_results
+
+        pois = [
+            {
+                "name": "海底捞",
+                "address": "长安街100号",
+                "type": "餐饮服务;中餐厅;火锅",
+                "tel": "010-12345678",
+                "opentime": "10:00-22:00",
+                "photos": [],
+                "location": "116.48,39.99",
+            },
+        ]
+        result = _format_poi_results(pois)
+        assert "### 🗺️ 周边餐厅" in result
+        assert "海底捞" in result
+        assert "长安街100号" in result
+        assert "火锅" in result         # 取最后一级分类
+        assert "中餐厅" not in result   # 不出现全路径
+        assert "010-12345678" in result
+
+    def test_returns_empty_string_for_empty_list(self):
+        from app.tools.food_tools import _format_poi_results
+
+        assert _format_poi_results([]) == ""
+
+
+class TestFormatTavilyResult:
+    """_format_tavily_result: Tavily 响应 → Markdown"""
+
+    def test_formats_with_answer_and_links(self):
+        from app.tools.food_tools import _format_tavily_result
+
+        data = {
+            "answer": "西安必吃推荐：肉夹馍、凉皮...",
+            "results": [
+                {"title": "攻略一", "url": "https://a.com", "content": "xxx"},
+                {"title": "攻略二", "url": "https://b.com", "content": "yyy"},
+            ],
+        }
+        result = _format_tavily_result(data)
+        assert "### 📝 美食攻略" in result
+        assert "西安必吃推荐" in result
+        assert "[攻略一](https://a.com)" in result
+        assert "[攻略二](https://b.com)" in result
+
+    def test_skips_result_without_url(self):
+        from app.tools.food_tools import _format_tavily_result
+
+        data = {
+            "answer": "",
+            "results": [{"title": "无链接", "url": "", "content": "xxx"}],
+        }
+        result = _format_tavily_result(data)
+        assert "无链接" not in result  # 无 url 的跳过
+
+    def test_formats_without_answer(self):
+        from app.tools.food_tools import _format_tavily_result
+
+        data = {
+            "answer": "",
+            "results": [{"title": "攻略", "url": "https://a.com", "content": "yyy"}],
+        }
+        result = _format_tavily_result(data)
+        assert "[攻略](https://a.com)" in result
+        assert "**参考链接**" in result
+
+    def test_returns_empty_string_for_none(self):
+        from app.tools.food_tools import _format_tavily_result
+
+        assert _format_tavily_result(None) == ""

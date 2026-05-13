@@ -10,7 +10,7 @@ AMAP_GEO_URL = "https://restapi.amap.com/v3/geocode/geo"
 AMAP_AROUND_URL = "https://restapi.amap.com/v5/place/around"
 TAVILY_URL = "https://api.tavily.com/search"
 POI_TYPE_FOOD = "050000"
-SEARCH_RADIUS = "2000"
+SEARCH_RADIUS = "10000"
 REQUEST_TIMEOUT = 15.0
 
 from langchain.tools import tool
@@ -107,6 +107,42 @@ async def _search_tavily(client: httpx.AsyncClient, query: str) -> dict | None:
     except (httpx.HTTPError, ValueError, LookupError) as e:
         app_logger.warning(f"Tavily搜索失败: {e}")
         return None
+
+
+def _format_poi_results(pois: list[dict]) -> str:
+    """POI 列表 → Markdown 表格"""
+    if not pois:
+        return ""
+
+    lines = ["### 🗺️ 周边餐厅", ""]
+    lines.append("| 名称 | 地址 | 类型 | 电话 |")
+    lines.append("|------|------|------|------|")
+    for p in pois:
+        name = p.get("name", "")
+        addr = p.get("address", "")
+        raw_type = p.get("type", "")
+        ptype = raw_type.split(";")[-1] if raw_type else ""
+        tel = p.get("tel", "")
+        lines.append(f"| {name} | {addr} | {ptype} | {tel} |")
+    return "\n".join(lines)
+
+
+def _format_tavily_result(data: dict | None) -> str:
+    """Tavily 搜索结果 → Markdown"""
+    if not data:
+        return ""
+
+    lines = ["### 📝 美食攻略", ""]
+    if data.get("answer"):
+        lines.append(data["answer"])
+        lines.append("")
+
+    links = [r for r in data.get("results", []) if r.get("title") and r.get("url")]
+    if links:
+        lines.append("**参考链接**:")
+        for r in links:
+            lines.append(f"- [{r['title']}]({r['url']})")
+    return "\n".join(lines)
 
 
 @tool
