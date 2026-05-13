@@ -1,6 +1,6 @@
 """
 餐饮查询工具
-调用 Amap MCP（周边搜索）+ Tavily MCP（美食攻略）
+直接调用 Amap API + Tavily API 获取餐饮推荐
 """
 import httpx
 from app.config import settings
@@ -14,7 +14,6 @@ SEARCH_RADIUS = "10000"
 REQUEST_TIMEOUT = 15.0
 
 from langchain.tools import tool
-from app.mcp_core.client import get_mcp_client
 from app.utils.logger import app_logger
 
 
@@ -145,6 +144,8 @@ def _format_tavily_result(data: dict | None) -> str:
     return "\n".join(lines)
 
 
+# ── 公开工具 ──
+
 @tool
 async def query_food(
     destination: str,
@@ -164,33 +165,9 @@ async def query_food(
     """
     app_logger.info(f"🍜 查询餐饮: {destination}, type={food_type}, query={query}")
 
-    manager = await get_mcp_client()
-    all_tools = await manager.get_tools()
-
-    # 筛选工具
-    geo_tool = None
-    around_tool = None
-    search_tool = None
-
-    for t in all_tools:
-        name = t.name.lower()
-        if 'maps_geo' in name:
-            geo_tool = t
-        elif 'maps_around_search' in name:
-            around_tool = t
-        elif 'search_travel_info' in name:
-            search_tool = t
-
-    # 检查工具可用性
-    if not any([geo_tool, around_tool, search_tool]):
-        return "⚠️ 餐饮查询服务暂不可用，请稍后重试。"
-
-    results = []
-
-    # 确定搜索关键词
     if food_type == "restaurant":
         around_keyword = query or f"{destination} 餐厅"
-        search_query = f"{destination} 餐厅推荐 必吃榜"
+        search_query = f"{destination} 必吃餐厅推荐 特色菜"
     elif food_type == "local_snack":
         around_keyword = query or f"{destination} 小吃"
         search_query = f"{destination} 本地小吃 特色美食攻略"
@@ -198,35 +175,41 @@ async def query_food(
         around_keyword = query or f"{destination} 美食"
         search_query = f"{destination} 美食攻略 必吃推荐"
 
-    # 1. Amap 周边搜索
-    if geo_tool and around_tool:
-        try:
-            geo_result = await geo_tool.ainvoke({"address": destination})
-            geo_str = str(geo_result) if not isinstance(geo_result, str) else geo_result
-            app_logger.info(f"Geocoding 结果: {geo_str[:200]}")
+    results = []
+    warnings = []
 
-            around_params = {
-                "keywords": around_keyword,
-                "city": destination,
-            }
-            around_result = await around_tool.ainvoke(around_params)
-            around_str = str(around_result) if not isinstance(around_result, str) else around_result
-            if around_str.strip():
-                results.append(f"## 🗺️ 周边餐饮\n{around_str}")
-        except Exception as e:
-            app_logger.warning(f"Amap 餐饮搜索失败: {e}")
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        # 1. 地理编码
+        location = None
+        if settings.amap_api_key:
+            location = await _geocode(client, destination)
 
-    # 2. Tavily 美食攻略搜索
-    if search_tool:
-        try:
-            search_result = await search_tool.ainvoke({"query": search_query})
-            search_str = str(search_result) if not isinstance(search_result, str) else search_result
-            if search_str.strip():
-                results.append(f"## 📝 美食攻略\n{search_str}")
-        except Exception as e:
-            app_logger.warning(f"Tavily 美食搜索失败: {e}")
+        if not location:
+            warnings.append("⚠️ 无法获取目的地坐标")
+        else:
+            # 2. POI 周边搜索
+            pois = await _search_poi(client, location, around_keyword)
+            if pois:
+                results.append(_format_poi_results(pois))
+            else:
+                warnings.append("⚠️ 地图餐饮数据暂不可用")
+
+        # 3. Tavily 美食攻略
+        if settings.tavily_api_key:
+            tavily_data = await _search_tavily(client, search_query)
+            if tavily_data:
+                results.append(_format_tavily_result(tavily_data))
+            else:
+                warnings.append("⚠️ 美食攻略数据暂不可用")
 
     if not results:
-        return f"未找到 {destination} 的餐饮推荐，请尝试更具体的搜索词。"
+        msg = "⚠️ 餐饮查询服务暂不可用，请稍后重试。"
+        if warnings:
+            msg = "\n".join(warnings) + "\n\n" + msg
+        return msg
 
-    return "\n\n".join(results)
+    output = f"## 🍜 {destination} 餐饮推荐\n"
+    if warnings:
+        output += "\n".join(warnings) + "\n\n"
+    output += "\n\n".join(results)
+    return output
