@@ -93,7 +93,7 @@ def record_requirement_tool(
                 tool_call_id=runtime.tool_call_id,
             )
         ],
-    }, goto="agent")
+    })
 
 
 @tool
@@ -118,7 +118,7 @@ def select_destination_tool(
                 tool_call_id=runtime.tool_call_id,
             )
         ],
-    }, goto="agent")
+    })
 
 
 @tool
@@ -153,7 +153,7 @@ def select_transport_tool(
                 tool_call_id=runtime.tool_call_id,
             )
         ],
-    }, goto="agent")
+    })
 
 
 @tool
@@ -189,7 +189,7 @@ def select_accommodation_tool(
                 tool_call_id=runtime.tool_call_id,
             )
         ],
-    }, goto="agent")
+    })
 
 
 @tool
@@ -225,7 +225,7 @@ def select_food_tool(
                 tool_call_id=runtime.tool_call_id,
             )
         ],
-    }, goto="agent")
+    })
 
 
 @tool
@@ -333,7 +333,7 @@ async def generate_itinerary_tool(
                 tool_call_id=runtime.tool_call_id,
             )
         ],
-    }, goto="agent")
+    })
 
 
 @tool
@@ -399,7 +399,7 @@ def summarize_budget_tool(
                 tool_call_id=runtime.tool_call_id,
             )
         ],
-    }, goto="agent")
+    })
 
 
 @tool
@@ -509,7 +509,7 @@ def go_back_to_step(
     ]
 
     # ── 6. 返回 Command ──
-    return Command(update=update, goto="agent")
+    return Command(update=update)
 
 
 # ── 快捷回退工具 (7 个) ──
