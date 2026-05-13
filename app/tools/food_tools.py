@@ -2,9 +2,38 @@
 餐饮查询工具
 调用 Amap MCP（周边搜索）+ Tavily MCP（美食攻略）
 """
+import httpx
+from app.config import settings
+
+# ── API 端点常量 ──
+AMAP_GEO_URL = "https://restapi.amap.com/v3/geocode/geo"
+AMAP_AROUND_URL = "https://restapi.amap.com/v5/place/around"
+TAVILY_URL = "https://api.tavily.com/search"
+POI_TYPE_FOOD = "050000"
+SEARCH_RADIUS = "2000"
+REQUEST_TIMEOUT = 15.0
+
 from langchain.tools import tool
 from app.mcp_core.client import get_mcp_client
 from app.utils.logger import app_logger
+
+
+# ── 辅助函数 ──
+
+async def _geocode(client: httpx.AsyncClient, address: str) -> str | None:
+    """地理编码：结构化地址 → 经纬度坐标，失败返回 None"""
+    try:
+        resp = await client.get(AMAP_GEO_URL, params={
+            "address": address,
+            "key": settings.amap_api_key,
+        })
+        data = resp.json()
+        if data.get("status") == "1" and data.get("geocodes"):
+            return data["geocodes"][0]["location"]
+        return None
+    except Exception as e:
+        app_logger.warning(f"地理编码失败: {e}")
+        return None
 
 
 @tool
