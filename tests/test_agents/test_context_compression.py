@@ -2,9 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from langchain_core.messages import (
-    HumanMessage, AIMessage, SystemMessage, ToolMessage
-)
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.graph.message import RemoveMessage
 
 
@@ -39,7 +37,6 @@ class TestGuardPassthrough:
 
         state = {
             "messages": [
-                SystemMessage(content="步骤 1 的 system prompt"),
                 HumanMessage(content="我想去北京"),
                 AIMessage(content="好的，北京是个不错的选择"),
             ]
@@ -48,22 +45,6 @@ class TestGuardPassthrough:
         assert result == {}
         llm.ainvoke.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_all_system_messages_no_compression(self):
-        """全部是 SystemMessage 时无可压缩内容，返回空 dict"""
-        from app.agents.handoffs.graph import _make_guard_node
-
-        llm = make_mock_llm()
-        guard = _make_guard_node(llm)
-
-        state = {
-            "messages": [
-                SystemMessage(content="步骤 prompt"),
-                SystemMessage(content="历史摘要"),
-            ]
-        }
-        result = await guard(state)
-        assert result == {}
 
 
 class TestGuardCompression:
@@ -77,11 +58,10 @@ class TestGuardCompression:
         llm = make_mock_llm("[摘要] 用户想去北京旅行，预算5000元")
         guard = _make_guard_node(llm, max_tokens=100)
 
-        system_msg = SystemMessage(content="步骤 prompt")
         old_msgs = make_messages(20)
         recent_msgs = make_messages(2)
 
-        state = {"messages": [system_msg] + old_msgs + recent_msgs}
+        state = {"messages": old_msgs + recent_msgs}
         result = await guard(state)
 
         assert "messages" in result
@@ -96,26 +76,6 @@ class TestGuardCompression:
 
         llm.ainvoke.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_preserves_system_messages(self):
-        """SystemMessage 不被压缩或删除"""
-        from app.agents.handoffs.graph import _make_guard_node
-
-        llm = make_mock_llm("[摘要] 测试")
-        guard = _make_guard_node(llm, max_tokens=100)
-
-        sys1 = SystemMessage(content="步骤 1 prompt")
-        sys2 = SystemMessage(content="之前的摘要")
-        old_msgs = make_messages(20)
-        recent_msgs = make_messages(2)
-
-        state = {"messages": [sys1, sys2] + old_msgs + recent_msgs}
-        result = await guard(state)
-
-        result_msgs = result["messages"]
-        remove_ids = {m.id for m in result_msgs if isinstance(m, RemoveMessage)}
-        assert sys1.id not in remove_ids
-        assert sys2.id not in remove_ids
 
     @pytest.mark.asyncio
     async def test_keeps_recent_messages(self):
@@ -125,7 +85,6 @@ class TestGuardCompression:
         llm = make_mock_llm("[摘要] 测试")
         guard = _make_guard_node(llm, max_tokens=100)
 
-        sys_msg = SystemMessage(content="步骤 prompt")
         old_msgs = make_messages(20)
         recent = [
             HumanMessage(content="最新的用户消息"),
@@ -134,7 +93,7 @@ class TestGuardCompression:
             AIMessage(content="再一条AI回复"),
         ]
 
-        state = {"messages": [sys_msg] + old_msgs + recent}
+        state = {"messages": old_msgs + recent}
         result = await guard(state)
 
         result_msgs = result["messages"]
@@ -156,11 +115,10 @@ class TestGuardFallback:
 
         guard = _make_guard_node(llm, max_tokens=100)
 
-        sys_msg = SystemMessage(content="步骤 prompt")
         old_msgs = make_messages(20)
         recent_msgs = make_messages(2)
 
-        state = {"messages": [sys_msg] + old_msgs + recent_msgs}
+        state = {"messages": old_msgs + recent_msgs}
         result = await guard(state)
 
         result_msgs = result["messages"]

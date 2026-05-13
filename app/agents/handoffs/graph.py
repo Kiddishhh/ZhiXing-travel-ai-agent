@@ -27,17 +27,18 @@ from app.utils.logger import app_logger
 
 # ── 上下文压缩配置 ──
 
-COMPRESSION_MAX_TOKENS = 8000
-COMPRESSION_KEEP_RECENT = 4
+COMPRESSION_MAX_TOKENS = 12000
+COMPRESSION_KEEP_RECENT = 10
 
 COMPRESSION_SYSTEM_PROMPT = """你是一个对话摘要专家。请将以下旅行规划对话压缩为简洁摘要。
 
 压缩规则：
-1. 保留所有关键事实：日期、目的地、人数、预算、已选选项（交通/住宿/餐饮）
-2. 保留用户的特殊需求和偏好
-3. 保留工具调用返回的具体数据（航班号、酒店名、价格、菜品等）
-4. 去除闲聊、重复确认、冗余表达
-5. 使用中文，不超过 500 字
+1. 只提取事实数据：日期、目的地、人数、预算、已选选项（交通/住宿/餐饮）
+2. 只提取用户偏好和特殊需求
+3. 只提取工具返回的具体数据（航班号、酒店名、价格、菜品等）
+4. 禁止描述 AI 做过什么、问过什么、建议过什么
+5. 去除闲聊、重复确认、冗余表达
+6. 使用中文，不超过 800 字
 
 待压缩对话：
 {messages_to_compress}
@@ -57,21 +58,12 @@ def _make_guard_node(llm: ChatTongyi, max_tokens: int = None):
         if token_count <= threshold:
             return {}
 
-        # 分离 SystemMessage（保留不动）和可压缩消息
-        system_msgs = []
-        compressible = []
-        for msg in messages:
-            if isinstance(msg, SystemMessage):
-                system_msgs.append(msg)
-            else:
-                compressible.append(msg)
-
-        # 如果可压缩消息不足，不压缩
-        if len(compressible) <= COMPRESSION_KEEP_RECENT:
+        # 如果消息不足，不压缩
+        if len(messages) <= COMPRESSION_KEEP_RECENT:
             return {}
 
-        # 分离旧消息和最近消息
-        old_msgs = compressible[:-COMPRESSION_KEEP_RECENT]
+        # 分离：旧消息(压缩) + 最近消息(保留)
+        old_msgs = messages[:-COMPRESSION_KEEP_RECENT]
 
         # 构建压缩请求文本
         messages_text = "\n".join([
@@ -85,7 +77,7 @@ def _make_guard_node(llm: ChatTongyi, max_tokens: int = None):
             compression_prompt = (
                 f"之前的对话摘要：\n{previous_summary}\n\n"
                 f"新的待压缩对话：\n{messages_text}\n\n"
-                f"请将以上内容合并为一份完整的简洁摘要（不超过 500 字）："
+                f"请将以上内容合并为一份完整的简洁摘要："
             )
         else:
             compression_prompt = COMPRESSION_SYSTEM_PROMPT.format(
@@ -165,20 +157,20 @@ def _make_agent_node(llm: ChatTongyi, resolver: StepConfigResolver):
         # 根据 current_step 解析 prompt + tools
         system_prompt, tools = resolver.resolve(state)
 
-        # 构建注入 LLM 的消息列表（临时，不存入 state）
+        # 构建注入 LLM 的三层消息（临时，不存入 state）
         messages = []
 
-        # 1. 上下文摘要（由 guard 节点生成，临时注入）
+        # 第1层: 指令层 — 当前步骤 prompt（优先级最高，最先被 LLM 读取）
+        messages.append(SystemMessage(content=system_prompt))
+
+        # 第2层: 记忆层 — 已收集的旅行事实数据（辅助参考）
         context_summary = state.get("context_summary")
         if context_summary:
             messages.append(
-                SystemMessage(content=f"[对话历史摘要]\n\n{context_summary}")
+                SystemMessage(content=f"[已收集的旅行信息]\n\n{context_summary}")
             )
 
-        # 2. 步骤 prompt（由 StepConfigResolver 生成，临时注入）
-        messages.append(SystemMessage(content=system_prompt))
-
-        # 3. 对话历史（Human/AI/Tool 消息，来自 state）
+        # 第3层: 对话层 — 交互历史
         messages.extend(state["messages"])
 
         # 绑定工具到 LLM，发起调用
