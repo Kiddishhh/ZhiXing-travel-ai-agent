@@ -77,6 +77,38 @@ async def _search_poi(
         return []
 
 
+async def _search_tavily(client: httpx.AsyncClient, query: str) -> dict | None:
+    """Tavily 深度搜索：美食攻略查询，失败返回 None"""
+    try:
+        resp = await client.post(TAVILY_URL, json={
+            "api_key": settings.tavily_api_key,
+            "query": query,
+            "search_depth": "advanced",
+            "max_results": 5,
+            "include_answer": True,
+        })
+        if resp.status_code != 200:
+            app_logger.warning(f"Tavily搜索 HTTP {resp.status_code}: {resp.text[:200]}")
+            return None
+        data = resp.json()
+        if data.get("results") is not None:
+            return {
+                "answer": data.get("answer", ""),
+                "results": [
+                    {
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "content": (r.get("content") or "")[:300],
+                    }
+                    for r in data["results"]
+                ],
+            }
+        return None
+    except (httpx.HTTPError, ValueError, LookupError) as e:
+        app_logger.warning(f"Tavily搜索失败: {e}")
+        return None
+
+
 @tool
 async def query_food(
     destination: str,

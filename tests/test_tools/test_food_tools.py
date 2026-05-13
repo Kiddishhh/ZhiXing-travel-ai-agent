@@ -132,3 +132,58 @@ class TestSearchPoi:
 
         result = await _search_poi(mock_client, "116.48,39.99", "北京 餐厅")
         assert result == []
+
+
+class TestSearchTavily:
+    """_search_tavily: Tavily 美食攻略搜索"""
+
+    @pytest.mark.asyncio
+    async def test_returns_structured_data_on_success(self):
+        """正常返回结构化搜索结果"""
+        from app.tools.food_tools import _search_tavily
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "answer": "西安必吃推荐：肉夹馍、凉皮、羊肉泡馍...",
+            "results": [
+                {
+                    "title": "西安美食攻略",
+                    "url": "https://example.com/xian-food",
+                    "content": "详细介绍西安回民街美食...",
+                }
+            ],
+        }
+        mock_client.post.return_value = mock_resp
+
+        result = await _search_tavily(mock_client, "西安 美食攻略")
+        assert result is not None
+        assert "西安必吃推荐" in result["answer"]
+        assert result["results"][0]["title"] == "西安美食攻略"
+        assert len(result["results"][0]["content"]) <= 300
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_results(self):
+        """无 results 字段时返回 None"""
+        from app.tools.food_tools import _search_tavily
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {}
+        mock_client.post.return_value = mock_resp
+
+        result = await _search_tavily(mock_client, "xyz")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_timeout(self):
+        """超时返回 None"""
+        from app.tools.food_tools import _search_tavily
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.TimeoutException("timeout")
+
+        result = await _search_tavily(mock_client, "西安 美食")
+        assert result is None
