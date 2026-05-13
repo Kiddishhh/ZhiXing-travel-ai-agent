@@ -39,6 +39,44 @@ async def _geocode(client: httpx.AsyncClient, address: str) -> str | None:
         return None
 
 
+async def _search_poi(
+    client: httpx.AsyncClient, location: str, keyword: str
+) -> list[dict]:
+    """POI 周边搜索：坐标 + 关键词 → 结构化餐厅列表，失败返回 []"""
+    try:
+        resp = await client.get(AMAP_AROUND_URL, params={
+            "location": location,
+            "keywords": keyword,
+            "types": POI_TYPE_FOOD,
+            "show_fields": "business,photos",
+            "radius": SEARCH_RADIUS,
+            "page_size": 10,
+            "key": settings.amap_api_key,
+        })
+        if resp.status_code != 200:
+            app_logger.warning(f"POI搜索 HTTP {resp.status_code}: {resp.text[:200]}")
+            return []
+        data = resp.json()
+        if data.get("status") == "1" and data.get("pois"):
+            pois = []
+            for p in data["pois"]:
+                biz = p.get("business") or {}
+                pois.append({
+                    "name": p.get("name", ""),
+                    "address": p.get("address", ""),
+                    "type": p.get("type", ""),
+                    "tel": biz.get("tel", ""),
+                    "opentime": biz.get("opentime", ""),
+                    "photos": [ph.get("url", "") for ph in (p.get("photos") or []) if ph.get("url")],
+                    "location": p.get("location", ""),
+                })
+            return pois
+        return []
+    except (httpx.HTTPError, ValueError, LookupError) as e:
+        app_logger.warning(f"POI搜索失败: {e}")
+        return []
+
+
 @tool
 async def query_food(
     destination: str,
