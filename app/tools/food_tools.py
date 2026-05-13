@@ -66,6 +66,9 @@ async def _search_poi(
                     "type": p.get("type", ""),
                     "tel": biz.get("tel", ""),
                     "opentime": biz.get("opentime", ""),
+                    "tag":biz.get("tag", ""),
+                    "rating": biz.get("rating", ""),
+                    "cost":biz.get("cost", ""),
                     "photos": [ph.get("url", "") for ph in (p.get("photos") or []) if ph.get("url")],
                     "location": p.get("location", ""),
                 })
@@ -114,15 +117,18 @@ def _format_poi_results(pois: list[dict]) -> str:
         return ""
 
     lines = ["### 🗺️ 周边餐厅", ""]
-    lines.append("| 名称 | 地址 | 类型 | 电话 |")
-    lines.append("|------|------|------|------|")
+    lines.append("| 名称 | 地址 | 类型 | 电话 | 特色 | 评分 | 人均 |")
+    lines.append("|------|------|------|------|------|------|------|")
     for p in pois:
         name = p.get("name", "")
         addr = p.get("address", "")
         raw_type = p.get("type", "")
         ptype = raw_type.split(";")[-1] if raw_type else ""
         tel = p.get("tel", "")
-        lines.append(f"| {name} | {addr} | {ptype} | {tel} |")
+        tag = p.get("tag", "")
+        rating = p.get("rating", "")
+        cost = p.get("cost", "")
+        lines.append(f"| {name} | {addr} | {ptype} | {tel} | {tag} | {rating} | {cost} |")
     return "\n".join(lines)
 
 

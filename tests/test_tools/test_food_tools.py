@@ -202,6 +202,9 @@ class TestFormatPoiResults:
                 "type": "餐饮服务;中餐厅;火锅",
                 "tel": "010-12345678",
                 "opentime": "10:00-22:00",
+                "tag": "老字号",
+                "rating": "4.5",
+                "cost": "120",
                 "photos": [],
                 "location": "116.48,39.99",
             },
@@ -213,6 +216,9 @@ class TestFormatPoiResults:
         assert "火锅" in result         # 取最后一级分类
         assert "中餐厅" not in result   # 不出现全路径
         assert "010-12345678" in result
+        assert "老字号" in result       # 特色 tag
+        assert "4.5" in result          # 评分
+        assert "120" in result          # 人均
 
     def test_returns_empty_string_for_empty_list(self):
         from app.tools.food_tools import _format_poi_results
