@@ -29,6 +29,7 @@ from app.tools.accommodation_tools import query_accommodation
 from app.tools.food_tools import query_food
 from app.tools.budget_tools import calculate_budget
 from app.tools.order_tools import create_order
+from app.tools.utility_tools import get_current_date
 
 
 async def get_step_config() -> dict:
@@ -64,6 +65,7 @@ async def get_step_config() -> dict:
             "tools": [
                 record_requirement_tool,
                 check_current_progress,
+                get_current_date,
             ],
             "requires": []
         },
@@ -93,6 +95,7 @@ async def get_step_config() -> dict:
                 go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
+                get_current_date,
             ],
             "requires": ["user_requirement"]
         },
@@ -124,6 +127,7 @@ async def get_step_config() -> dict:
                 go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
+                get_current_date,
             ],
             "requires": ["user_requirement", "selected_destination"]
         },
@@ -157,6 +161,7 @@ async def get_step_config() -> dict:
                 go_back_to_transport, go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
+                get_current_date,
             ],
             "requires": ["user_requirement", "selected_destination", "selected_transport"]
         },
@@ -192,6 +197,7 @@ async def get_step_config() -> dict:
                 go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
+                get_current_date,
             ],
             "requires": ["user_requirement", "selected_destination", "selected_transport", "selected_accommodation_types"]
         },
@@ -227,6 +233,7 @@ async def get_step_config() -> dict:
                 go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
+                get_current_date,
             ],
             "requires": ["user_requirement", "selected_destination", "selected_transport", "selected_accommodation_types", "selected_food_types"]
         },
@@ -260,6 +267,7 @@ async def get_step_config() -> dict:
                 go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
+                get_current_date,
             ],
             "requires": ["user_requirement", "itinerary"]
         },
@@ -293,6 +301,7 @@ async def get_step_config() -> dict:
                 go_back_to_destination, go_back_to_requirement,
                 go_back_to_step,
                 check_current_progress,
+                get_current_date,
             ],
             "requires": ["user_requirement", "itinerary", "budget"]
         },

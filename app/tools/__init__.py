@@ -63,12 +63,14 @@ from .accommodation_tools import query_accommodation
 from .food_tools import query_food
 from .budget_tools import calculate_budget
 from .order_tools import create_order
+from .utility_tools import get_current_date
 
 register_tool("query_transport_options", query_transport_options)
 register_tool("query_accommodation", query_accommodation)
 register_tool("query_food", query_food)
 register_tool("calculate_budget", calculate_budget)
 register_tool("create_order", create_order)
+register_tool("get_current_date", get_current_date)
 
 __all__ = [
     "TOOL_REGISTRY",
