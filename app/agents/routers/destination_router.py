@@ -81,7 +81,7 @@ def classifier_node(state: DestinationRouterState) -> dict:
         api_key=settings.dashscope_api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
-    structured_llm = llm.with_structured_output(ClassificationResult)
+    structured_llm = llm.with_structured_output(ClassificationResult, method="function_calling")
 
     prompt = _CLASSIFIER_PROMPT.format(query=query, destination=destination)
     result: ClassificationResult = structured_llm.invoke(prompt)

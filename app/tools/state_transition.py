@@ -103,8 +103,7 @@ def record_requirement_tool(
         "updated_at": time.time(),
         "messages": [
             ToolMessage(
-                content=f"需求已记录: 目的地 {user_requirement.get('destination')}, "
-                        f"{user_requirement.get('travel_days')}天, 预算等级 {budget_level}",
+                content=f"需求已记录。当前阶段 → 目的地推荐。请向用户介绍推荐目的地并询问偏好。",
                 tool_call_id=runtime.tool_call_id,
             )
         ],
@@ -129,7 +128,7 @@ def select_destination_tool(
         "updated_at": time.time(),
         "messages": [
             ToolMessage(
-                content=f"目的地已确认: {destination}",
+                content=f"目的地已确认: {destination}。当前阶段 → 交通规划。请向用户介绍可选交通方式并询问偏好。",
                 tool_call_id=runtime.tool_call_id,
             )
         ],
@@ -164,7 +163,7 @@ def select_transport_tool(
         "updated_at": time.time(),
         "messages": [
             ToolMessage(
-                content=f"交通方式已确认: {transport_type}, {len(transport_options)} 个方案",
+                content=f"交通已确认: {transport_type}。当前阶段 → 住宿规划。请向用户介绍住宿类型选项并询问偏好。",
                 tool_call_id=runtime.tool_call_id,
             )
         ],
@@ -200,7 +199,7 @@ def select_accommodation_tool(
         "updated_at": time.time(),
         "messages": [
             ToolMessage(
-                content=f"住宿已确认: {', '.join(accommodation_types)}, {len(accommodation_options)} 个方案",
+                content=f"住宿已确认。当前阶段 → 餐饮规划。请向用户介绍餐饮类型选项并询问偏好。",
                 tool_call_id=runtime.tool_call_id,
             )
         ],
@@ -236,7 +235,7 @@ def select_food_tool(
         "updated_at": time.time(),
         "messages": [
             ToolMessage(
-                content=f"餐饮已确认: {', '.join(food_types)}, {len(food_options)} 个方案",
+                content=f"餐饮已确认。当前阶段 → 行程生成。请向用户展示即将生成的行程并确认。",
                 tool_call_id=runtime.tool_call_id,
             )
         ],
@@ -345,7 +344,7 @@ async def generate_itinerary_tool(
         "updated_at": time.time(),
         "messages": [
             ToolMessage(
-                content=f"行程已生成: {len(itinerary)} 天行程 (目的地: {destination})",
+                content=f"行程已生成 ({len(itinerary)}天)。当前阶段 → 预算汇总。请向用户展示预算明细并确认。",
                 tool_call_id=runtime.tool_call_id,
             )
         ],
@@ -410,8 +409,7 @@ def summarize_budget_tool(
         "updated_at": time.time(),
         "messages": [
             ToolMessage(
-                content=f"预算汇总完成: 总计 {total} 元, "
-                        f"人均每日 {per_person_per_day:.0f} 元 ({total_people}人 × {travel_days}天)",
+                content=f"预算汇总完成 (总计 ¥{total})。当前阶段 → 订单生成。请向用户展示完整旅行计划并确认下单。",
                 tool_call_id=runtime.tool_call_id,
             )
         ],
