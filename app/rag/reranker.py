@@ -6,7 +6,7 @@ LLM 重排序器
 import re
 from typing import List
 
-from langchain_community.chat_models import ChatTongyi
+from langchain_openai import ChatOpenAI
 from langchain_core.documents import Document
 
 from app.config import settings
@@ -32,10 +32,11 @@ class LLMReranker:
         self.score_threshold = score_threshold
         self.max_chars = max_chars
 
-        self._llm = ChatTongyi(
+        self._llm = ChatOpenAI(
             model=model_name,
             temperature=temperature,
             api_key=settings.dashscope_api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         )
 
     def rerank(self, query: str, documents: List[Document]) -> List[Document]:

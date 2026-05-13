@@ -7,7 +7,7 @@
 from operator import add
 from typing import Annotated, Literal, List, TypedDict
 
-from langchain_community.chat_models import ChatTongyi
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
@@ -75,10 +75,11 @@ def classifier_node(state: DestinationRouterState) -> dict:
     query = state["original_query"]
     destination = state["destination"]
 
-    llm = ChatTongyi(
+    llm = ChatOpenAI(
         model="qwen3.6-plus",
         temperature=0.0,
         api_key=settings.dashscope_api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
     structured_llm = llm.with_structured_output(ClassificationResult)
 

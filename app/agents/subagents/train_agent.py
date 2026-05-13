@@ -3,7 +3,7 @@
 调用 12306 MCP 的多个工具
 """
 import asyncio
-from langchain_community.chat_models import ChatTongyi
+from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from app.config import settings
 from app.mcp_core.client import get_mcp_client
@@ -30,9 +30,10 @@ async def _get_train_tools():
 async def create_train_subagent():
     """创建火车票查询 Subagent"""
 
-    llm = ChatTongyi(
+    llm = ChatOpenAI(
         model=settings.qwen_model_name,
         api_key=settings.dashscope_api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         temperature=0.1
     )
 

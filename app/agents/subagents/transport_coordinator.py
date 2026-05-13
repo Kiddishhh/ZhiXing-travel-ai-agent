@@ -3,7 +3,7 @@
 统一调度航班、高铁、自驾三个 Subagent，提供综合交通规划
 """
 import asyncio
-from langchain_community.chat_models import ChatTongyi
+from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 from app.config import settings
@@ -98,9 +98,10 @@ async def plan_driving_route(origin: str, destination: str, departure_date: str 
 async def create_transport_coordinator():
     """创建交通规划协调器"""
 
-    llm = ChatTongyi(
+    llm = ChatOpenAI(
         model=settings.qwen_model_name,
         api_key=settings.dashscope_api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         temperature=0.7
     )
 

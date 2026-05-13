@@ -11,7 +11,7 @@ import time
 
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
-from langchain_community.chat_models import ChatTongyi
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt.tool_node import ToolRuntime
 from langgraph.types import Command
 
@@ -303,9 +303,10 @@ async def generate_itinerary_tool(
 严格按照 {travel_days} 天生成, 每一天都要有具体的景点、餐饮和住宿安排。
 直接返回 JSON 数组, 不要额外说明。"""
 
-    llm = ChatTongyi(
+    llm = ChatOpenAI(
         model=settings.qwen_model_name,
         api_key=settings.dashscope_api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         temperature=0.7,
     )
     response = await llm.ainvoke(itinerary_prompt)

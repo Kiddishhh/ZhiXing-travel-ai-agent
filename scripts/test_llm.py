@@ -3,7 +3,7 @@
 """
 import os
 from dotenv import load_dotenv
-from langchain_community.chat_models import ChatTongyi
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
 load_dotenv()
@@ -16,9 +16,10 @@ def test_qwen_connection():
 
     try:
         # 初始化模型
-        model = ChatTongyi(
+        model = ChatOpenAI(
             model="qwen3.6-plus",
             api_key=os.getenv("DASHSCOPE_API_KEY"),
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             temperature=0.7
         )
 

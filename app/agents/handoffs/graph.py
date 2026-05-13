@@ -17,7 +17,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph.message import RemoveMessage
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately
-from langchain_community.chat_models import ChatTongyi
+from langchain_openai import ChatOpenAI
 from app.core.state import TravelState
 from app.core.middleware import create_step_config_resolver, StepConfigResolver
 from app.tools import TOOL_REGISTRY
@@ -46,7 +46,7 @@ COMPRESSION_SYSTEM_PROMPT = """你是一个对话摘要专家。请将以下旅�
 请生成摘要："""
 
 
-def _make_guard_node(llm: ChatTongyi, max_tokens: int = None):
+def _make_guard_node(llm: ChatOpenAI, max_tokens: int = None):
     """创建 guard 节点闭包 — 每次 agent 调用前检测并压缩上下文"""
 
     threshold = max_tokens if max_tokens is not None else COMPRESSION_MAX_TOKENS
@@ -126,9 +126,10 @@ async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
     """
     resolver = await create_step_config_resolver()
 
-    llm = ChatTongyi(
+    llm = ChatOpenAI(
         model="qwen3.6-plus",
         api_key=settings.dashscope_api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
 
     # 从全局注册表收集所有工具
@@ -150,7 +151,7 @@ async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
     return builder.compile(checkpointer=checkpointer)
 
 
-def _make_agent_node(llm: ChatTongyi, resolver: StepConfigResolver):
+def _make_agent_node(llm: ChatOpenAI, resolver: StepConfigResolver):
     """创建 agent 调用节点 (闭包捕获 llm 和 resolver 实例)"""
 
     async def agent_node(state: TravelState) -> dict:
