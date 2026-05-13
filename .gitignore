@@ -37,6 +37,9 @@ htmlcov/
 logs/
 *.log
 
+# --- Claude Code local config ---
+.claude/
+
 # --- OS files ---
 .DS_Store
 Thumbs.db
@@ -49,3 +52,6 @@ Thumbs.db
 
 # --- Data files (generated/downloaded) ---
 data/
+
+# --- Superpowers internal docs ---
+docs/superpowers/
