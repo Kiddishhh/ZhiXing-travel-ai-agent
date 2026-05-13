@@ -25,6 +25,17 @@ from app.config import settings
 from app.utils.logger import app_logger
 
 
+def _wrap_tool_error(error: Exception) -> str:
+    """将工具调用异常包装为引导性提示，让 LLM 自然向用户补充提问"""
+    msg = str(error)
+    if "Input should be" in msg or "validation error" in msg.lower():
+        return (
+            f"参数校验未通过：\n{msg}\n\n"
+            f"请向用户逐一确认上述信息，补充完整后重新调用。"
+        )
+    return f"操作未能完成：{msg[:300]}。请向用户说明并询问如何处理。"
+
+
 # ── 上下文压缩配置 ──
 
 COMPRESSION_MAX_TOKENS = 12000
@@ -138,7 +149,7 @@ async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
     builder = StateGraph(TravelState)
     builder.add_node("guard", _make_guard_node(llm))
     builder.add_node("agent", _make_agent_node(llm, resolver))
-    builder.add_node("tools", ToolNode(all_tools))
+    builder.add_node("tools", ToolNode(all_tools, handle_tool_errors=_wrap_tool_error))
 
     builder.add_edge(START, "guard")
     builder.add_edge("guard", "agent")

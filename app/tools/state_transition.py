@@ -53,6 +53,21 @@ def record_requirement_tool(
             adult_count, children_count, budget_min, budget_max,
             budget_level, travel_styles, special_needs
     """
+    # 防御：空值规范化
+    user_requirement["travel_styles"] = user_requirement.get("travel_styles") or []
+    user_requirement["special_needs"] = user_requirement.get("special_needs") or None
+
+    # 检查目的地是否已填写
+    if not user_requirement.get("destination"):
+        return Command(update={
+            "messages": [
+                ToolMessage(
+                    content="目的地尚未确认，请向用户询问旅游目的地。",
+                    tool_call_id=runtime.tool_call_id,
+                )
+            ]
+        })
+
     # 计算平均预算
     budget_min = user_requirement.get("budget_min", 0) or 0
     budget_max = user_requirement.get("budget_max", 0) or 0

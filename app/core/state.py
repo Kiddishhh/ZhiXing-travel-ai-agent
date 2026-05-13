@@ -38,8 +38,8 @@ class UserRequirement(TypedDict):
     children_count: int
     budget_min: Optional[float]
     budget_max: Optional[float]
-    budget_level: BudgetLevel
-    travel_styles: List[TravelStyle]
+    budget_level: Optional[BudgetLevel]
+    travel_styles: Optional[List[TravelStyle]]
     special_needs: Optional[str]
 
 
