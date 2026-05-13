@@ -27,11 +27,14 @@ async def _geocode(client: httpx.AsyncClient, address: str) -> str | None:
             "address": address,
             "key": settings.amap_api_key,
         })
+        if resp.status_code != 200:
+            app_logger.warning(f"地理编码 HTTP {resp.status_code}: {resp.text[:200]}")
+            return None
         data = resp.json()
         if data.get("status") == "1" and data.get("geocodes"):
             return data["geocodes"][0]["location"]
         return None
-    except Exception as e:
+    except (httpx.HTTPError, ValueError, LookupError) as e:
         app_logger.warning(f"地理编码失败: {e}")
         return None
 

@@ -14,6 +14,7 @@ class TestGeocode:
 
         mock_client = AsyncMock()
         mock_resp = MagicMock()
+        mock_resp.status_code = 200
         mock_resp.json.return_value = {
             "status": "1",
             "geocodes": [{"location": "116.481499,39.990475"}],
@@ -30,10 +31,25 @@ class TestGeocode:
 
         mock_client = AsyncMock()
         mock_resp = MagicMock()
+        mock_resp.status_code = 200
         mock_resp.json.return_value = {"status": "0", "geocodes": []}
         mock_client.get.return_value = mock_resp
 
         result = await _geocode(mock_client, "不存在的城市xyz")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_non_200_status(self):
+        """HTTP 非 200 状态返回 None"""
+        from app.tools.food_tools import _geocode
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 502
+        mock_resp.text = "Bad Gateway"
+        mock_client.get.return_value = mock_resp
+
+        result = await _geocode(mock_client, "北京")
         assert result is None
 
     @pytest.mark.asyncio
