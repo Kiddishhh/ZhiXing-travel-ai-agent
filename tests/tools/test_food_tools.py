@@ -1,0 +1,437 @@
+"""food_tools.py 单元测试 — HTTP mock，无需真实 API Key"""
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+import httpx
+
+
+def _print_stage(stage: str, total: int, current: int):
+    print(f"\n{'─'*50}")
+    print(f"  [{current}/{total}] {stage}")
+    print(f"{'─'*50}")
+
+
+class TestGeocode:
+    """_geocode: 地址 → 坐标"""
+
+    @pytest.mark.asyncio
+    async def test_returns_location_on_success(self):
+        """正常返回坐标字符串"""
+        _print_stage("Geocode 地理编码", 4, 1)
+        from app.tools.food_tools import _geocode
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "status": "1",
+            "geocodes": [{"location": "116.481499,39.990475"}],
+        }
+        mock_client.get.return_value = mock_resp
+
+        result = await _geocode(mock_client, "北京")
+        assert result == "116.481499,39.990475"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_city_not_found(self):
+        """无效城市返回 None"""
+        _print_stage("Geocode 地理编码", 4, 2)
+        from app.tools.food_tools import _geocode
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"status": "0", "geocodes": []}
+        mock_client.get.return_value = mock_resp
+
+        result = await _geocode(mock_client, "不存在的城市xyz")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_non_200_status(self):
+        """HTTP 非 200 状态返回 None"""
+        _print_stage("Geocode 地理编码", 4, 3)
+        from app.tools.food_tools import _geocode
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 502
+        mock_resp.text = "Bad Gateway"
+        mock_client.get.return_value = mock_resp
+
+        result = await _geocode(mock_client, "北京")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_timeout(self):
+        """网络超时返回 None"""
+        _print_stage("Geocode 地理编码", 4, 4)
+        from app.tools.food_tools import _geocode
+
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.TimeoutException("timeout")
+
+        result = await _geocode(mock_client, "北京")
+        assert result is None
+
+
+class TestSearchPoi:
+    """_search_poi: 周边 POI 搜索（v5/place/around）"""
+
+    @pytest.mark.asyncio
+    async def test_returns_poi_list_on_success(self):
+        """正常返回结构化 POI 列表"""
+        _print_stage("SearchPoi 周边搜索", 3, 1)
+        from app.tools.food_tools import _search_poi
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "status": "1",
+            "pois": [
+                {
+                    "name": "海底捞火锅",
+                    "address": "长安街100号",
+                    "type": "餐饮服务;中餐厅;火锅",
+                    "business": {"tel": "010-12345678", "opentime": "10:00-22:00"},
+                    "photos": [{"url": "https://example.com/photo1.jpg"}],
+                    "location": "116.48,39.99",
+                },
+                {
+                    "name": "兰州拉面",
+                    "address": "王府井大街20号",
+                    "type": "餐饮服务;中餐厅;面馆",
+                    "business": None,
+                    "photos": [],
+                    "location": "116.49,39.98",
+                },
+            ],
+        }
+        mock_client.get.return_value = mock_resp
+
+        result = await _search_poi(mock_client, "116.48,39.99", "北京 餐厅")
+        assert len(result) == 2
+        assert result[0]["name"] == "海底捞火锅"
+        assert result[0]["tel"] == "010-12345678"
+        assert result[0]["opentime"] == "10:00-22:00"
+        assert result[0]["photos"] == ["https://example.com/photo1.jpg"]
+        # 第二个 POI business 为空
+        assert result[1]["tel"] == ""
+        assert result[1]["opentime"] == ""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_no_pois(self):
+        """无 POI 时返回空列表"""
+        _print_stage("SearchPoi 周边搜索", 3, 2)
+        from app.tools.food_tools import _search_poi
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"status": "1", "pois": []}
+        mock_client.get.return_value = mock_resp
+
+        result = await _search_poi(mock_client, "116.48,39.99", "北京 餐厅")
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_on_http_error(self):
+        """HTTP 错误返回空列表（降级）"""
+        _print_stage("SearchPoi 周边搜索", 3, 3)
+        from app.tools.food_tools import _search_poi
+
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.HTTPError("server error")
+
+        result = await _search_poi(mock_client, "116.48,39.99", "北京 餐厅")
+        assert result == []
+
+
+class TestSearchTavily:
+    """_search_tavily: Tavily 美食攻略搜索"""
+
+    @pytest.mark.asyncio
+    async def test_returns_structured_data_on_success(self):
+        """正常返回结构化搜索结果"""
+        _print_stage("SearchTavily 攻略搜索", 3, 1)
+        from app.tools.food_tools import _search_tavily
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "answer": "西安必吃推荐：肉夹馍、凉皮、羊肉泡馍...",
+            "results": [
+                {
+                    "title": "西安美食攻略",
+                    "url": "https://example.com/xian-food",
+                    "content": "详细介绍西安回民街美食...",
+                }
+            ],
+        }
+        mock_client.post.return_value = mock_resp
+
+        result = await _search_tavily(mock_client, "西安 美食攻略")
+        assert result is not None
+        assert "西安必吃推荐" in result["answer"]
+        assert result["results"][0]["title"] == "西安美食攻略"
+        assert len(result["results"][0]["content"]) <= 300
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_results(self):
+        """无 results 字段时返回 None"""
+        _print_stage("SearchTavily 攻略搜索", 3, 2)
+        from app.tools.food_tools import _search_tavily
+
+        mock_client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {}
+        mock_client.post.return_value = mock_resp
+
+        result = await _search_tavily(mock_client, "xyz")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_timeout(self):
+        """超时返回 None"""
+        _print_stage("SearchTavily 攻略搜索", 3, 3)
+        from app.tools.food_tools import _search_tavily
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.TimeoutException("timeout")
+
+        result = await _search_tavily(mock_client, "西安 美食")
+        assert result is None
+
+
+class TestFormatPoiResults:
+    """_format_poi_results: POI 列表 → Markdown 表格"""
+
+    def test_formats_pois_as_markdown_table(self):
+        _print_stage("FormatPoi 格式化", 2, 1)
+        from app.tools.food_tools import _format_poi_results
+
+        pois = [
+            {
+                "name": "海底捞",
+                "address": "长安街100号",
+                "type": "餐饮服务;中餐厅;火锅",
+                "tel": "010-12345678",
+                "opentime": "10:00-22:00",
+                "tag": "老字号",
+                "rating": "4.5",
+                "cost": "120",
+                "photos": [],
+                "location": "116.48,39.99",
+            },
+        ]
+        result = _format_poi_results(pois)
+        assert "### 🗺️ 周边餐厅" in result
+        assert "海底捞" in result
+        assert "长安街100号" in result
+        assert "火锅" in result         # 取最后一级分类
+        assert "中餐厅" not in result   # 不出现全路径
+        assert "010-12345678" in result
+        assert "老字号" in result       # 特色 tag
+        assert "4.5" in result          # 评分
+        assert "120" in result          # 人均
+
+    def test_returns_empty_string_for_empty_list(self):
+        _print_stage("FormatPoi 格式化", 2, 2)
+        from app.tools.food_tools import _format_poi_results
+
+        assert _format_poi_results([]) == ""
+
+
+class TestFormatTavilyResult:
+    """_format_tavily_result: Tavily 响应 → Markdown"""
+
+    def test_formats_with_answer_and_links(self):
+        _print_stage("FormatTavily 格式化", 4, 1)
+        from app.tools.food_tools import _format_tavily_result
+
+        data = {
+            "answer": "西安必吃推荐：肉夹馍、凉皮...",
+            "results": [
+                {"title": "攻略一", "url": "https://a.com", "content": "xxx"},
+                {"title": "攻略二", "url": "https://b.com", "content": "yyy"},
+            ],
+        }
+        result = _format_tavily_result(data)
+        assert "### 📝 美食攻略" in result
+        assert "西安必吃推荐" in result
+        assert "[攻略一](https://a.com)" in result
+        assert "[攻略二](https://b.com)" in result
+
+    def test_skips_result_without_url(self):
+        _print_stage("FormatTavily 格式化", 4, 2)
+        from app.tools.food_tools import _format_tavily_result
+
+        data = {
+            "answer": "",
+            "results": [{"title": "无链接", "url": "", "content": "xxx"}],
+        }
+        result = _format_tavily_result(data)
+        assert "无链接" not in result  # 无 url 的跳过
+
+    def test_formats_without_answer(self):
+        _print_stage("FormatTavily 格式化", 4, 3)
+        from app.tools.food_tools import _format_tavily_result
+
+        data = {
+            "answer": "",
+            "results": [{"title": "攻略", "url": "https://a.com", "content": "yyy"}],
+        }
+        result = _format_tavily_result(data)
+        assert "[攻略](https://a.com)" in result
+        assert "**参考链接**" in result
+
+    def test_returns_empty_string_for_none(self):
+        _print_stage("FormatTavily 格式化", 4, 4)
+        from app.tools.food_tools import _format_tavily_result
+
+        assert _format_tavily_result(None) == ""
+
+
+class TestQueryFoodIntegration:
+    """query_food 集成测试 — mock 全部 HTTP 响应"""
+
+    @pytest.mark.asyncio
+    async def test_all_sources_work(self):
+        """三个数据源均正常 → 输出完整 Markdown"""
+        _print_stage("QueryFood 集成", 4, 1)
+        print("[注入] mock HTTP 响应: geocode 返回西安坐标, around 返回回民街小吃, tavily 返回美食攻略")
+        from app.tools.food_tools import query_food
+
+        with patch("app.tools.food_tools.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+
+            async def get_side_effect(url, **kwargs):
+                resp = MagicMock()
+                resp.status_code = 200
+                if "geocode/geo" in url:
+                    resp.json.return_value = {
+                        "status": "1",
+                        "geocodes": [{"location": "108.940,34.260"}],
+                    }
+                elif "place/around" in url:
+                    resp.json.return_value = {
+                        "status": "1",
+                        "pois": [
+                            {
+                                "name": "回民街小吃",
+                                "address": "西安市莲湖区回民街",
+                                "type": "餐饮服务;地方小吃",
+                                "business": {"tel": "", "opentime": "08:00-23:00"},
+                                "photos": [],
+                                "location": "108.94,34.26",
+                            }
+                        ],
+                    }
+                return resp
+
+            async def post_side_effect(url, **kwargs):
+                resp = MagicMock()
+                resp.status_code = 200
+                resp.json.return_value = {
+                    "answer": "西安美食推荐：肉夹馍、羊肉泡馍...",
+                    "results": [
+                        {"title": "攻略", "url": "https://x.com", "content": "..."}
+                    ],
+                }
+                return resp
+
+            mock_client.get = AsyncMock(side_effect=get_side_effect)
+            mock_client.post = AsyncMock(side_effect=post_side_effect)
+            mock_client_cls.return_value.__aenter__.return_value = mock_client
+
+            result = await query_food.ainvoke({
+                "destination": "西安",
+                "food_type": "restaurant",
+            })
+
+        assert "## 🍜 西安 餐饮推荐" in str(result)
+        assert "回民街小吃" in str(result)
+        assert "### 📝 美食攻略" in str(result)
+
+    @pytest.mark.asyncio
+    async def test_geocode_fails_shows_warning(self):
+        """地理编码失败 → 警告，无 POI 结果"""
+        _print_stage("QueryFood 集成", 4, 2)
+        print("[注入] mock HTTP 响应: geocode 返回空(城市不存在), tavily 返回500")
+        from app.tools.food_tools import query_food
+
+        with patch("app.tools.food_tools.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {"status": "0", "geocodes": []}
+            mock_client.get.return_value = mock_resp
+            # tavily also fails — so we get the "all fail" message
+            mock_resp2 = MagicMock()
+            mock_resp2.status_code = 500
+            mock_client.post.return_value = mock_resp2
+            mock_client_cls.return_value.__aenter__.return_value = mock_client
+
+            result = await query_food.ainvoke({
+                "destination": "不存在的城市xyz",
+            })
+
+        assert "无法获取目的地坐标" in str(result)
+
+    @pytest.mark.asyncio
+    async def test_tavily_fails_degraded_to_poi_only(self):
+        """Tavily 失败 → 降级只输出 POI 结果"""
+        _print_stage("QueryFood 集成", 4, 3)
+        print("[注入] mock HTTP 响应: geocode 正常, around 正常返回测试餐厅, tavily 超时")
+        from app.tools.food_tools import query_food
+
+        with patch("app.tools.food_tools.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+
+            async def get_side(url, **kw):
+                resp = MagicMock()
+                resp.status_code = 200
+                if "geocode" in url:
+                    resp.json.return_value = {
+                        "status": "1",
+                        "geocodes": [{"location": "116.48,39.99"}],
+                    }
+                elif "around" in url:
+                    resp.json.return_value = {
+                        "status": "1",
+                        "pois": [
+                            {"name": "测试餐厅", "address": "某地", "type": "中餐厅",
+                             "business": {}, "photos": [], "location": "1,1"}
+                        ],
+                    }
+                return resp
+            mock_client.get = AsyncMock(side_effect=get_side)
+            mock_client.post.side_effect = httpx.TimeoutException("timeout")
+            mock_client_cls.return_value.__aenter__.return_value = mock_client
+
+            result = await query_food.ainvoke({"destination": "北京"})
+
+        assert "测试餐厅" in str(result)
+        assert "美食攻略数据暂不可用" in str(result)
+
+    @pytest.mark.asyncio
+    async def test_all_sources_fail(self):
+        """全部数据源失败 → 统一提示"""
+        _print_stage("QueryFood 集成", 4, 4)
+        print("[注入] mock HTTP 响应: geocode 返回空, tavily 超时 → 全部数据源失败")
+        from app.tools.food_tools import query_food
+
+        with patch("app.tools.food_tools.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {"status": "0", "geocodes": []}
+            mock_client.get.return_value = mock_resp
+            mock_client.post.side_effect = httpx.TimeoutException("timeout")
+            mock_client_cls.return_value.__aenter__.return_value = mock_client
+
+            result = await query_food.ainvoke({"destination": "nowhere"})
+
+        assert "暂不可用" in str(result)
