@@ -9,6 +9,16 @@ from typing import Annotated, Literal, List, TypedDict
 
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+from typing import Optional
+
+from app.rag.pipeline import RAGPipeline
+from app.rag.query_optimizer import QueryOptimizer
+from app.rag.retriever import HybridRetriever
+from app.rag.reranker import LLMReranker
+from app.rag.text_splitter import ParentDocumentSplitter
+from app.rag.document_loader import DocumentManager
+from app.core.ChromaDB.chroma_client import ChromaManager
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 
@@ -68,6 +78,44 @@ _CLASSIFIER_PROMPT = (
     "用户查询：{query}\n"
     "目的地：{destination}"
 )
+
+
+
+# ── RAG 管线（懒加载单例）────────────────────────────────
+
+_rag_pipeline: Optional[RAGPipeline] = None
+
+
+def _get_rag_pipeline() -> RAGPipeline:
+    """懒加载初始化 RAG 管线 — 首次调用时加载文档+构建索引"""
+    global _rag_pipeline
+    if _rag_pipeline is not None:
+        return _rag_pipeline
+
+    doc_manager = DocumentManager()
+    documents = doc_manager.load_all_documents()
+    splitter = ParentDocumentSplitter(
+        parent_chunk_size=1000, parent_chunk_overlap=200,
+        child_chunk_size=200, child_chunk_overlap=50,
+    )
+    _, child_docs = splitter.split_documents(documents)
+
+    chroma_manager = ChromaManager()
+    chroma_manager.delete_collection("travel_children")
+    retriever = HybridRetriever(
+        chroma_manager=chroma_manager,
+        collection_name="travel_children",
+    )
+    retriever.initialize(child_docs)
+
+    _rag_pipeline = RAGPipeline(
+        optimizer=QueryOptimizer(),
+        retriever=retriever,
+        parent_splitter=splitter,
+        reranker=LLMReranker(top_k=5),
+    )
+    app_logger.info("RAG 管线懒加载初始化完成")
+    return _rag_pipeline
 
 
 def classifier_node(state: DestinationRouterState) -> dict:
@@ -130,19 +178,20 @@ def agent_node(state: DestinationRouterState) -> dict:
 
 
 def _explore_agent(query: str) -> str:
-    """探索 Agent：从 RAG 检索景点攻略"""
+    """探索 Agent：通过 RAG 管道检索景点攻略（查询优化→混合检索→父文档扩展→重排序）"""
     try:
-        chroma_manager = ChromaManager()
-        docs = chroma_manager.similarity_search_with_score(query, k=5)
+        pipeline = _get_rag_pipeline()
+        result = pipeline.run(query)
 
-        if not docs:
+        if not result.final_docs:
             return f"未找到与「{query}」相关的攻略信息。"
 
-        lines = [f"## 相关攻略 ({len(docs)} 条)\n"]
-        for i, (doc, score) in enumerate(docs, 1):
-            snippet = doc.page_content[:200].replace("\n", " ")
+        lines = [f"## 相关攻略 ({len(result.final_docs)} 条)\n"]
+        for i, doc in enumerate(result.final_docs, 1):
+            score = doc.metadata.get("relevance_score", "N/A")
             source = doc.metadata.get("source", "未知来源")
-            lines.append(f"{i}. [{source}] {snippet}...")
+            snippet = doc.page_content[:200].replace("\n", " ")
+            lines.append(f"{i}. [{source}] (相关度:{score}) {snippet}...")
         return "\n\n".join(lines)
     except Exception as e:
         app_logger.error(f"探索 Agent 检索失败: {e}")
