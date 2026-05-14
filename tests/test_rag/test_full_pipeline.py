@@ -1,21 +1,15 @@
 """
-测试 RAG 完整管道（集成测试脚本）
+测试 RAG 完整管道
 
-初始化 RAG 系统 → 执行测试查询 → 打印结果。
-
-运行方式: python scripts/test_rag_pipeline.py
+运行方式:
+    pytest tests/test_rag/test_full_pipeline.py -v -s
+    python tests/test_rag/test_full_pipeline.py
 """
 import asyncio
-import sys
 import time
-from pathlib import Path
 
-_root = Path(__file__).resolve().parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
-
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+import pytest
+from langchain_core.documents import Document
 
 from app.core.ChromaDB.chroma_client import ChromaManager
 from app.rag.document_loader import DocumentManager
@@ -26,20 +20,21 @@ from app.rag.reranker import LLMReranker
 from app.rag.pipeline import RAGPipeline
 
 
-async def main():
+@pytest.mark.asyncio
+async def test_full_pipeline():
+    """测试完整 RAG 管道"""
+
     print("\n=== 初始化 RAG 系统 ===")
 
     # 1. 加载文档
     doc_manager = DocumentManager()
     documents = []
-    for load_fn, label in [
-        (doc_manager.load_destination_documents, "目的地"),
-        (doc_manager.load_food_documents, "美食"),
-        (doc_manager.load_accommodation_documents, "住宿"),
+    for load_fn in [
+        doc_manager.load_destination_documents,
+        doc_manager.load_food_documents,
+        doc_manager.load_accommodation_documents,
     ]:
-        docs = load_fn()
-        documents.extend(docs)
-        print(f"  {label}: {len(docs)} 篇")
+        documents.extend(load_fn())
     print(f"加载了 {len(documents)} 个文档")
 
     # 2. 切分文档
@@ -72,10 +67,9 @@ async def main():
     print("\n=== 测试检索 ===")
 
     test_queries = [
-        "推荐北京三天亲子游行程",
-        "有什么适合情侣的浪漫旅行目的地",
-        "重庆火锅哪家好吃",
-        "西安有哪些必去的历史景点",
+        "西安有哪些适合亲子游的景点?",
+        "西安的美食推荐",
+        "西安旅游的预算大概是多少?",
     ]
 
     for i, query in enumerate(test_queries, 1):
@@ -94,16 +88,13 @@ async def main():
         for j, doc in enumerate(result.final_docs, 1):
             score = doc.metadata.get("relevance_score", "N/A")
             source = doc.metadata.get("source", "unknown")
-            parent_id = doc.metadata.get("parent_id", "?")
             preview = doc.page_content[:120].replace("\n", " ")
-            print(f"  [{j}] {score}分 source={source} parent={parent_id}")
+            print(f"  [{j}] {score}分 ({source})")
             print(f"      {preview}...")
 
         if not result.final_docs:
             print("  (无结果)")
 
-    print(f"\n=== 测试完成 ===")
-
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(test_full_pipeline())
