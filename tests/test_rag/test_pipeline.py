@@ -170,3 +170,107 @@ class TestRAGPipeline:
         result = pipeline.run("北京故宫")
         assert result.parent_docs == child_docs
         mock_reranker.rerank.assert_called_once()
+
+    def test_run_hyde_extra_search(self):
+        """HyDE 策略时用假设文档做额外检索"""
+        child_docs = [
+            Document(
+                page_content="故宫",
+                metadata={"doc_id": "doc_0", "parent_id": "beijing.md_0"},
+            ),
+        ]
+        hyde_extra = [
+            Document(
+                page_content="故宫历史",
+                metadata={"doc_id": "doc_1", "parent_id": "beijing.md_1"},
+            ),
+        ]
+
+        mock_optimizer = MagicMock(spec=QueryOptimizer)
+        mock_optimizer.optimize.return_value = QueryOptimizeResult(
+            original_query="北京故宫历史",
+            strategy="hyde",
+            optimized_queries=["北京故宫历史"],
+            hypothetical_doc="故宫是中国明清两代的皇家宫殿，位于北京中轴线中心...",
+        )
+
+        mock_retriever = MagicMock()
+        mock_retriever.invoke.side_effect = [child_docs, hyde_extra]
+
+        mock_chroma = MagicMock()
+        mock_vectorstore = MagicMock()
+        mock_chroma.get_vectorstore.return_value = mock_vectorstore
+
+        parent_docs = [
+            Document(page_content="parent0", metadata={"parent_id": "beijing.md_0"}),
+            Document(page_content="parent1", metadata={"parent_id": "beijing.md_1"}),
+        ]
+
+        with patch(
+            "app.rag.pipeline.ParentDocumentSplitter.expand_context",
+            return_value=parent_docs,
+        ):
+            mock_reranker = MagicMock()
+            mock_reranker.rerank.return_value = parent_docs
+
+            pipeline = RAGPipeline(
+                optimizer=mock_optimizer,
+                retriever=mock_retriever,
+                chroma_manager=mock_chroma,
+                reranker=mock_reranker,
+            )
+
+            result = pipeline.run("北京故宫历史")
+
+        # 验证 retriever 被调用了两次（原始查询 + HyDE 文档）
+        assert mock_retriever.invoke.call_count == 2
+        assert result.strategy == "hyde"
+        assert result.child_count == 2
+
+    def test_run_retriever_exception_skipped(self):
+        """单个查询检索异常时跳过继续"""
+        child_docs = [
+            Document(
+                page_content="故宫",
+                metadata={"doc_id": "doc_0", "parent_id": "beijing.md_0"},
+            ),
+        ]
+
+        mock_optimizer = MagicMock(spec=QueryOptimizer)
+        mock_optimizer.optimize.return_value = QueryOptimizeResult(
+            original_query="测试",
+            strategy="multi_query",
+            optimized_queries=["q1", "q2", "q3"],
+        )
+
+        mock_retriever = MagicMock()
+        # q1 抛异常，q2 返回空，q3 返回结果
+        mock_retriever.invoke.side_effect = [
+            RuntimeError("检索超时"),
+            [],
+            child_docs,
+        ]
+
+        mock_chroma = MagicMock()
+        mock_vectorstore = MagicMock()
+        mock_chroma.get_vectorstore.return_value = mock_vectorstore
+
+        with patch(
+            "app.rag.pipeline.ParentDocumentSplitter.expand_context",
+            return_value=child_docs,
+        ):
+            mock_reranker = MagicMock()
+            mock_reranker.rerank.return_value = child_docs
+
+            pipeline = RAGPipeline(
+                optimizer=mock_optimizer,
+                retriever=mock_retriever,
+                chroma_manager=mock_chroma,
+                reranker=mock_reranker,
+            )
+
+            result = pipeline.run("测试")
+
+        assert mock_retriever.invoke.call_count == 3
+        assert result.child_count == 1
+        assert result.strategy == "multi_query"
