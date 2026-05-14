@@ -56,7 +56,7 @@ async def init_pipeline():
 
     # ── 1. 加载文档 ──
     t0 = time.time()
-    print("\n[1/5] 加载文档 (DocumentManager)...")
+    print("\n[1/4] 加载文档 (DocumentManager)...")
     doc_manager = DocumentManager()
     documents = _load_all_documents(doc_manager)
     print(f"  → 共加载 {len(documents)} 篇文档 (耗时 {time.time()-t0:.2f}s)")
@@ -65,57 +65,48 @@ async def init_pipeline():
         print("  ⚠ 未加载到任何文档! 请检查 data/documents/ 目录")
         return None
 
-    # ── 2. 切分文档 ──
+    # ── 2. 切分文档 + 构建父子映射表 ──
     t0 = time.time()
-    print("\n[2/5] 切分文档 (ParentDocumentSplitter)...")
+    print("\n[2/4] 切分文档 (ParentDocumentSplitter)...")
     print(f"  参数: parent_chunk=1000/200, child_chunk=200/50")
     splitter = ParentDocumentSplitter(
         parent_chunk_size=1000, parent_chunk_overlap=200,
         child_chunk_size=200, child_chunk_overlap=50,
     )
     parent_docs, child_docs = splitter.split_documents(documents)
-    print(f"  → 父文档: {len(parent_docs)} 个, 子文档: {len(child_docs)} 个 "
-          f"(耗时 {time.time()-t0:.2f}s)")
+    print(f"  → 父文档: {len(parent_docs)} 个 (内存映射)")
+    print(f"  → 子文档: {len(child_docs)} 个")
+    print(f"  (耗时 {time.time()-t0:.2f}s)")
 
-    # ── 3. 初始化 ChromaDB ──
+    # ── 3. 初始化 ChromaDB + 构建检索器 ──
     t0 = time.time()
-    print("\n[3/5] 初始化 ChromaDB...")
+    print("\n[3/4] 构建混合检索器...")
+    print(f"  参数: bm25_weight=0.4, dense_weight=0.6, rrf_k=60")
     chroma_manager = ChromaManager()
     chroma_manager.delete_collection("travel_children")
-    chroma_manager.delete_collection("travel_parents")
-    print(f"  → ChromaDB 就绪, 旧 collection 已清理 (耗时 {time.time()-t0:.2f}s)")
-
-    # ── 4. 构建检索器 + 双索引 ──
-    t0 = time.time()
-    print("\n[4/5] 构建混合检索器 + 双索引...")
-    print(f"  检索器参数: bm25_weight=0.4, dense_weight=0.6, rrf_k=60")
     retriever = HybridRetriever(
         chroma_manager=chroma_manager,
         collection_name="travel_children",
     )
     retriever.initialize(child_docs)
-
-    parent_ids = [p.metadata["parent_id"] for p in parent_docs]
-    chroma_manager.add_documents(
-        parent_docs, ids=parent_ids, collection_name="travel_parents",
-    )
-    print(f"  → travel_children: {len(child_docs)} 篇子文档 (BM25 + Dense)")
-    print(f"  → travel_parents:  {len(parent_docs)} 篇父文档 (上下文扩展)")
+    print(f"  → ChromaDB 就绪, {len(child_docs)} 篇子文档已索引")
     print(f"  (耗时 {time.time()-t0:.2f}s)")
 
-    # ── 5. 创建管道 ──
+    # ── 4. 创建管道 ──
     t0 = time.time()
-    print("\n[5/5] 创建 RAG 管道...")
+    print("\n[4/4] 创建 RAG 管道...")
     optimizer = QueryOptimizer()
     reranker = LLMReranker(top_k=5)
     pipeline = RAGPipeline(
         optimizer=optimizer,
         retriever=retriever,
-        chroma_manager=chroma_manager,
+        parent_splitter=splitter,
         reranker=reranker,
     )
     print(f"  → QueryOptimizer(model=qwen-turbo)")
-    print(f"  → LLMReranker(top_k=5, model=qwen-turbo)")
+    print(f"  → HybridRetriever(bm25+dense, weighted RRF)")
+    print(f"  → ParentDocumentSplitter({len(parent_docs)} 父文档映射)")
+    print(f"  → LLMReranker(top_k=5, LongContextReorder)")
     print(f"  → 管道就绪 (耗时 {time.time()-t0:.2f}s)")
 
     print(f"\n  初始化总耗时: {time.time()-total_start:.2f}s")

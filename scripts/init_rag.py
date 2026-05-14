@@ -75,39 +75,28 @@ async def init_rag_system():
     parent_docs, child_docs = splitter.split_documents(documents)
     app_logger.info(f"父文档: {len(parent_docs)} 个, 子文档: {len(child_docs)} 个")
 
-    # 3. 初始化 ChromaDB（双 collection）
+    # 3. 初始化 ChromaDB
     app_logger.info("初始化 ChromaDB...")
     chroma_manager = ChromaManager()
     chroma_manager.delete_collection("travel_children")
-    chroma_manager.delete_collection("travel_parents")
     app_logger.info("ChromaDB 客户端已就绪")
 
-    # 4. 构建混合检索器（子文档索引用于检索）
+    # 4. 构建混合检索器
     app_logger.info("构建混合检索器 (BM25 + ChromaDB + 加权RRF)...")
     retriever = HybridRetriever(
         chroma_manager=chroma_manager,
         collection_name="travel_children",
     )
     retriever.initialize(child_docs)
-    app_logger.info("子文档检索器初始化完成")
-
-    # 5. 索引父文档用于上下文扩展
-    app_logger.info("索引父文档到 travel_parents...")
-    parent_ids = [p.metadata["parent_id"] for p in parent_docs]
-    chroma_manager.add_documents(
-        parent_docs,
-        ids=parent_ids,
-        collection_name="travel_parents",
-    )
-    app_logger.info(f"父文档索引完成: {len(parent_docs)} 篇")
+    app_logger.info("检索器初始化完成")
 
     # 汇总
     app_logger.info("=" * 60)
     app_logger.info("RAG 系统初始化完成！")
     app_logger.info(f"  文档数: {len(documents)}")
-    app_logger.info(f"  父文档块: {len(parent_docs)}")
+    app_logger.info(f"  父文档块: {len(parent_docs)}（内存映射）")
     app_logger.info(f"  子文档块: {len(child_docs)}")
-    app_logger.info(f"  向量库: data/chroma_db/travel_children + travel_parents")
+    app_logger.info(f"  向量库: data/chroma_db/travel_children")
     app_logger.info("=" * 60)
     return True
 
