@@ -38,4 +38,9 @@ async def query_destination_info(destination: str, query: str = "") -> str:
         "destination": destination
     })
 
-    return result["final_report"]
+    brake = (
+        "\n\n---\n"
+        "⚠️ 请将以上目的地信息整理后用简洁的语言向用户展示（每个目的地 2-3 句话），"
+        "列出推荐理由后等待用户选择。用户明确确认目的地之后，再调用 select_destination_tool。"
+    )
+    return result["final_report"] + brake
