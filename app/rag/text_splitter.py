@@ -51,3 +51,42 @@ class ParentDocumentSplitter:
         )
 
         return parent_docs, child_docs
+
+    @staticmethod
+    def expand_context(
+        child_docs: List[Document],
+        parent_collection,
+    ) -> List[Document]:
+        """通过子文档 parent_id 查父文档，去重返回父文档列表
+
+        Args:
+            child_docs: 检索到的子文档列表（metadata 中需含 parent_id）
+            parent_collection: ChromaDB collection（需支持 get(ids=[...]) 接口）
+
+        Returns:
+            去重后的父文档列表（保持首次出现顺序）
+        """
+        seen: set = set()
+        parents: List[Document] = []
+
+        for child in child_docs:
+            pid = child.metadata.get("parent_id")
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+
+            try:
+                result = parent_collection.get(ids=[pid])
+                if result and result.get("documents") and result["documents"]:
+                    parents.append(Document(
+                        page_content=result["documents"][0],
+                        metadata=result.get("metadatas", [{}])[0] or {},
+                    ))
+            except Exception:
+                app_logger.warning(f"查找父文档失败: parent_id={pid}")
+                continue
+
+        app_logger.info(
+            f"上下文扩展: {len(child_docs)} 子文档 → {len(parents)} 父文档"
+        )
+        return parents
