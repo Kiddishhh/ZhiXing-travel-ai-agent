@@ -21,7 +21,7 @@ class TestRAGPipelineResult:
         print("[注入] original_query='测试查询'")
         assert result.original_query == "测试查询"
         assert result.strategy == ""
-        assert result.child_count == 0
+        assert len(result.child_docs) == 0
         print("[OK] 默认值全部正确")
 
     def test_full_result(self):
@@ -30,13 +30,13 @@ class TestRAGPipelineResult:
         result = RAGPipelineResult(
             original_query="北京旅游", strategy="multi_query",
             optimized_queries=["q1", "q2"], child_docs=docs,
-            parent_docs=docs, final_docs=docs, child_count=3, parent_count=1,
+            parent_docs=docs, final_docs=docs,
         )
 
-        print("[注入] strategy='multi_query', child_count=3, parent_count=1")
+        print("[注入] strategy='multi_query', child=1, parent=1")
         assert result.strategy == "multi_query"
         assert len(result.optimized_queries) == 2
-        assert result.child_count == 3
+        assert len(result.child_docs) == 1
         print("[OK] 完整结果构造正确")
 
 
@@ -121,8 +121,8 @@ class TestRAGPipeline:
         result = pipeline.run("北京故宫")
 
         assert result.strategy == "none"
-        assert result.child_count == 1
-        assert result.parent_count == 1
+        assert len(result.child_docs) ==1
+        assert len(result.parent_docs) ==1
         assert len(result.final_docs) == 1
         mock_retriever.invoke.assert_called_once()
         mock_splitter.get_parent_context.assert_called_once()
@@ -194,8 +194,8 @@ class TestRAGPipeline:
 
         assert mock_retriever.invoke.call_count == 2
         assert result.strategy == "hyde"
-        assert result.child_count == 2
-        print("[OK] HyDE 额外检索合并, child_count=2")
+        assert len(result.child_docs) ==2
+        print("[OK] HyDE 额外检索合并, 2 篇子文档")
 
     def test_run_retriever_exception(self):
         print("\n[测试] multi_query 中单查询异常 → 跳过继续")
@@ -228,5 +228,5 @@ class TestRAGPipeline:
         result = pipeline.run("测试")
 
         assert mock_retriever.invoke.call_count == 3
-        assert result.child_count == 1
+        assert len(result.child_docs) ==1
         print("[OK] 异常跳过, 管线继续, child_count=1")

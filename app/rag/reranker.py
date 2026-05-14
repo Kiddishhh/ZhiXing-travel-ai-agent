@@ -13,6 +13,8 @@ from langchain_community.document_transformers import LongContextReorder
 from app.config import settings
 from app.utils.logger import app_logger
 
+_REORDER = LongContextReorder()
+
 
 class LLMReranker:
     """LLM 重排序器
@@ -37,9 +39,8 @@ class LLMReranker:
             model=model_name,
             temperature=temperature,
             api_key=settings.dashscope_api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            base_url=settings.qwen_base_url,
         )
-        self._reorder = LongContextReorder()
 
     def rerank(self, query: str, documents: List[Document]) -> List[Document]:
         """对候选文档进行重排序
@@ -85,8 +86,6 @@ class LLMReranker:
         )
         return result
 
-    # ── 内部方法 ──────────────────────────────────────
-
     def _score_document(self, query: str, document: Document) -> float:
         """对单个文档进行评分"""
         content = document.page_content[:self.max_chars]
@@ -112,10 +111,12 @@ class LLMReranker:
             f"只输出分数："
         )
 
+    _SCORE_RE = re.compile(r"(\d+)")
+
     @staticmethod
     def _parse_score(response: str) -> float:
         """解析 LLM 返回的分数"""
-        match = re.search(r"(\d+)", response.strip())
+        match = LLMReranker._SCORE_RE.search(response.strip())
         if match:
             score = float(match.group(1))
             return max(0.0, min(10.0, score))
@@ -126,4 +127,4 @@ class LLMReranker:
         """将相关文档放置头尾，不太相关的放中间，减少 lost-in-middle 效应"""
         if len(documents) <= 2:
             return documents
-        return self._reorder.transform_documents(documents)
+        return _REORDER.transform_documents(documents)

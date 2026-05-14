@@ -27,7 +27,7 @@ class TestHybridRetrieverInit:
     def test_default_collection_name(self):
         mock_chroma = MagicMock()
         retriever = HybridRetriever(chroma_manager=mock_chroma)
-        assert retriever.collection_name == "travel"
+        assert retriever.collection_name == "travel_children"
 
 
 class TestRRFFusion:

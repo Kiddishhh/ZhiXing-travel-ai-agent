@@ -25,13 +25,7 @@ from app.utils.logger import app_logger
 def _build_retriever():
     """构建并初始化检索器"""
     doc_manager = DocumentManager()
-    documents = []
-    for load_fn in [
-        doc_manager.load_destination_documents,
-        doc_manager.load_food_documents,
-        doc_manager.load_accommodation_documents,
-    ]:
-        documents.extend(load_fn())
+    documents = doc_manager.load_all_documents()
 
     if not documents:
         app_logger.error("未加载到任何文档")

@@ -28,7 +28,7 @@ class HybridRetriever:
         dense_top_k: int = 10,
         rrf_k: int = 60,
         final_top_k: int = 10,
-        collection_name: str = "travel",
+        collection_name: str = "travel_children",
         bm25_weight: float = 0.4,
         dense_weight: float = 0.6,
     ):
@@ -42,7 +42,6 @@ class HybridRetriever:
         self.dense_weight = dense_weight
 
         self._bm25: BM25Okapi | None = None
-        self._documents: List[Document] = []
         self._doc_id_map: Dict[str, Document] = {}
         self._is_initialized: bool = False
 
@@ -52,7 +51,6 @@ class HybridRetriever:
         Args:
             documents: 已切分的子文档列表
         """
-        self._documents = documents
         self._doc_id_map = {}
 
         for i, doc in enumerate(documents):
@@ -67,8 +65,6 @@ class HybridRetriever:
             f"混合检索器初始化完成: {len(documents)} 篇文档"
         )
 
-    # ── 索引构建 ──────────────────────────────────────
-
     def _build_bm25_index(self, documents: List[Document]) -> None:
         """使用 jieba 分词构建 BM25Okapi 索引"""
         tokenized_docs = []
@@ -81,6 +77,10 @@ class HybridRetriever:
             else:
                 empty_count += 1
 
+        if not tokenized_docs:
+            app_logger.warning("所有文档均为空，BM25 索引将不可用")
+            self._bm25 = None
+            return
         self._bm25 = BM25Okapi(tokenized_docs)
         app_logger.info(
             f"BM25 索引构建完成: {len(tokenized_docs)} 篇文档"
@@ -96,8 +96,6 @@ class HybridRetriever:
         app_logger.info(
             f"向量库构建完成: {len(documents)} 篇文档添加到 '{self.collection_name}'"
         )
-
-    # ── 检索方法 ──────────────────────────────────────
 
     def _bm25_search(self, query: str) -> List[Tuple[str, float]]:
         """BM25 关键词检索"""
@@ -123,8 +121,6 @@ class HybridRetriever:
                 dense_list.append((doc_id, distance))
         return dense_list
 
-    # ── RRF 融合 ──────────────────────────────────────
-
     def _rrf_fusion(
         self,
         bm25_results: List[Tuple[str, float]],
@@ -146,8 +142,6 @@ class HybridRetriever:
             rrf_scores.items(), key=lambda x: x[1], reverse=True
         )
         return sorted_results[: self.final_top_k]
-
-    # ── 检索入口 ──────────────────────────────────────
 
     def invoke(self, query: str) -> List[Document]:
         """混合检索入口

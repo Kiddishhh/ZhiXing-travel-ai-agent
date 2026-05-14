@@ -22,8 +22,6 @@ class RAGPipelineResult:
     child_docs: List[Document] = field(default_factory=list)
     parent_docs: List[Document] = field(default_factory=list)
     final_docs: List[Document] = field(default_factory=list)
-    child_count: int = 0
-    parent_count: int = 0
 
 
 class RAGPipeline:
@@ -81,8 +79,6 @@ class RAGPipeline:
             child_docs=child_docs,
             parent_docs=parent_docs,
             final_docs=final_docs,
-            child_count=len(child_docs),
-            parent_count=len(parent_docs),
         )
 
     def _retrieve_and_merge(self, opt_result: QueryOptimizeResult) -> List[Document]:

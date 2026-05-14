@@ -52,14 +52,13 @@ class QueryOptimizer:
     """查询优化器 — LLM 分类 + 策略执行二合一"""
 
     def __init__(self, model_name: str = "qwen-turbo", temperature: float = 0.0):
-        self._llm = ChatOpenAI(
-            model=model_name,
-            temperature=temperature,
-            api_key=settings.dashscope_api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        )
-        self._structured_llm = self._llm.with_structured_output(
-            QueryOptimizeResult, method="function_calling"
+        self._structured_llm = (
+            ChatOpenAI(
+                model=model_name,
+                temperature=temperature,
+                api_key=settings.dashscope_api_key,
+                base_url=settings.qwen_base_url,
+            ).with_structured_output(QueryOptimizeResult, method="function_calling")
         )
 
     def optimize(self, query: str) -> QueryOptimizeResult:

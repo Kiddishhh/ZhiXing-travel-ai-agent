@@ -34,20 +34,6 @@ def _check_env():
     return True
 
 
-def _load_all_documents(doc_manager):
-    """加载所有分类文档"""
-    documents = []
-    for load_fn, label in [
-        (doc_manager.load_destination_documents, "目的地"),
-        (doc_manager.load_food_documents, "美食"),
-        (doc_manager.load_accommodation_documents, "住宿"),
-    ]:
-        docs = load_fn()
-        documents.extend(docs)
-        app_logger.info(f"  {label}: {len(docs)} 篇")
-    return documents
-
-
 async def init_rag_system():
     """初始化 RAG 系统（加载 → 切分 → 索引）"""
     app_logger.info("=" * 60)
@@ -60,7 +46,7 @@ async def init_rag_system():
     # 1. 加载文档
     app_logger.info("加载文档...")
     doc_manager = DocumentManager()
-    documents = _load_all_documents(doc_manager)
+    documents = doc_manager.load_all_documents()
     if not documents:
         app_logger.warning("未加载到任何文档，请确认 data/documents/ 目录下有 .md 文件")
         return False

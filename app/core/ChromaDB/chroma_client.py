@@ -68,7 +68,7 @@ class ChromaManager:
         self,
         documents: List[Document],
         ids: Optional[List[str]] = None,
-        collection_name: str = "travel",
+        collection_name: str = "travel_children",
     ) -> None:
         """向集合添加文档"""
         if not documents:
@@ -85,7 +85,7 @@ class ChromaManager:
         self,
         query: str,
         k: int = 10,
-        collection_name: str = "travel",
+        collection_name: str = "travel_children",
     ) -> List[Tuple[Document, float]]:
         """语义相似度检索，返回 (Document, distance) 列表
 

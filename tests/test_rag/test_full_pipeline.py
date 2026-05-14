@@ -28,13 +28,7 @@ async def test_full_pipeline():
 
     # 1. 加载文档
     doc_manager = DocumentManager()
-    documents = []
-    for load_fn in [
-        doc_manager.load_destination_documents,
-        doc_manager.load_food_documents,
-        doc_manager.load_accommodation_documents,
-    ]:
-        documents.extend(load_fn())
+    documents = doc_manager.load_all_documents()
     print(f"加载了 {len(documents)} 个文档")
 
     # 2. 切分文档
@@ -81,7 +75,7 @@ async def test_full_pipeline():
 
         print(f"策略: {result.strategy}")
         print(f"优化查询: {result.optimized_queries}")
-        print(f"子文档: {result.child_count}, 父文档: {result.parent_count}, "
+        print(f"子文档: {len(result.child_docs)}, 父文档: {len(result.parent_docs)}, "
               f"最终: {len(result.final_docs)}")
         print(f"耗时: {elapsed:.2f}秒")
 
