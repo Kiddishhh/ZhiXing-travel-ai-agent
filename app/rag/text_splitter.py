@@ -73,11 +73,11 @@ class ParentDocumentSplitter:
             pid = child.metadata.get("parent_id")
             if not pid or pid in seen:
                 continue
-            seen.add(pid)
 
             try:
                 result = parent_collection.get(ids=[pid])
-                if result and result.get("documents") and result["documents"]:
+                if result and result.get("documents"):
+                    seen.add(pid)
                     parents.append(Document(
                         page_content=result["documents"][0],
                         metadata=result.get("metadatas", [{}])[0] or {},
