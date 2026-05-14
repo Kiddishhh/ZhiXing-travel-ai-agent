@@ -79,6 +79,14 @@ class QueryOptimizer:
                 HumanMessage(content=f"请优化以下用户查询：\n\n{query}"),
             ]
             result = self._structured_llm.invoke(messages)
+            # DashScope function_calling 可能返回 dict 而非 QueryOptimizeResult
+            if isinstance(result, dict):
+                result = QueryOptimizeResult(
+                    original_query=query,
+                    strategy=result.get("strategy", "none"),
+                    optimized_queries=result.get("optimized_queries", [query]),
+                    hypothetical_doc=result.get("hypothetical_doc"),
+                )
             app_logger.info(f"查询优化完成: strategy={result.strategy}")
             return result
         except Exception as e:

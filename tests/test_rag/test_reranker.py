@@ -11,7 +11,7 @@ class TestLLMRerankerInit:
     def test_default_values(self):
         reranker = LLMReranker()
         assert reranker.top_k == 5
-        assert reranker.score_threshold == 0.0
+        assert reranker.score_threshold == 5.0
         assert reranker.max_chars == 2000
 
     def test_custom_values(self):

@@ -26,7 +26,7 @@ class LLMReranker:
         model_name: str = "qwen-turbo",
         temperature: float = 0.0,
         top_k: int = 5,
-        score_threshold: float = 0.0,
+        score_threshold: float = 5.0,
         max_chars: int = 2000,
     ):
         self.top_k = top_k
