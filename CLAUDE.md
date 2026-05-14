@@ -11,6 +11,12 @@ python scripts/init_rag.py
 # Test RAG retrieval + reranking
 python scripts/test_rag.py
 
+# Test RAG pipeline (unit tests with visible flow)
+python -m pytest tests/test_rag/ -v -s
+
+# Test RAG pipeline (integration, requires real LLM + indexed docs)
+python scripts/test_rag_pipeline.py
+
 # Test LLM connection
 python scripts/test_llm.py
 
@@ -123,6 +129,14 @@ ChatOpenAI(
 )
 ```
 Model name default in `app/config.py` → `settings.qwen_model_name`. Structured output in destination router uses `method="function_calling"` to avoid `json_object` mode issues.
+
+### 测试原则
+
+- **测试必须可视化流程**：每个测试用例必须包含 `print()` 输出关键步骤和模拟输入注入，让运行者能看到完整测试流水线，而不是沉默地 pass
+- **模拟输入的可见注入**：mock 对象的返回值、side_effect 设置必须在 print 中明确展示（如 `print("[注入] optimizer.optimize → strategy=none")`）
+- **分阶段标注**：用 `[1/4]`, `[2/4]` 等标注管线阶段，`[OK]` 标注断言通过
+- **运行方式**：用 `python -m pytest tests/test_rag/ -v -s`（`-s` 不捕获 stdout）来查看测试流程
+- **对比输出**：管线测试应打印输入和输出的对比，让人直观看到数据如何流转
 
 ### Key Patterns
 
