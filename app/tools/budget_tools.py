@@ -43,8 +43,10 @@ def calculate_budget(
     transport_options = state.get("transport_options", []) or []
     for t in transport_options:
         price = t.get("price", 0)
-        transport_total += price
         transport_detail.append(f"  {t.get('details', '未知交通')}: ¥{price}")
+    if transport_options:
+        prices = [t.get("price", 0) for t in transport_options if t.get("price")]
+        transport_total = round(sum(prices) / len(prices), 2) if prices else 0.0
 
     # ── 2. 住宿费 ──
     accommodation_total = 0.0
@@ -54,10 +56,15 @@ def calculate_budget(
     for a in accommodation_options:
         price_per_night = a.get("price_per_night", 0)
         acc_total = price_per_night * nights
-        accommodation_total += acc_total
         accommodation_detail.append(
             f"  {a.get('name', '未知住宿')}: ¥{price_per_night}/晚 × {nights}晚 = ¥{acc_total}"
         )
+    if accommodation_options:
+        totals = [
+            a.get("price_per_night", 0) * nights
+            for a in accommodation_options if a.get("price_per_night")
+        ]
+        accommodation_total = round(sum(totals) / len(totals), 2) if totals else 0.0
 
     # ── 3. 餐饮费 ──
     food_total = 0.0
@@ -66,10 +73,15 @@ def calculate_budget(
     for f in food_options:
         daily = f.get("estimated_daily_cost", 0)
         f_total = daily * travel_days
-        food_total += f_total
         food_detail.append(
             f"  {f.get('type', '未知餐饮')}: ¥{daily}/天 × {travel_days}天 = ¥{f_total}"
         )
+    if food_options:
+        totals = [
+            f.get("estimated_daily_cost", 0) * travel_days
+            for f in food_options if f.get("estimated_daily_cost")
+        ]
+        food_total = round(sum(totals) / len(totals), 2) if totals else 0.0
 
     # ── 4. 景点门票 ──
     attractions_total = adult_count * travel_days * 100
@@ -93,15 +105,15 @@ def calculate_budget(
         "",
         "### 交通费",
         *transport_detail,
-        f"> 交通小计: ¥{transport_total}",
+        f"> 交通小计 (均价): ¥{transport_total}",
         "",
         "### 住宿费",
         *accommodation_detail,
-        f"> 住宿小计: ¥{accommodation_total}",
+        f"> 住宿小计 (均价): ¥{accommodation_total}",
         "",
         "### 餐饮费",
         *food_detail,
-        f"> 餐饮小计: ¥{food_total}",
+        f"> 餐饮小计 (均价): ¥{food_total}",
         "",
         "### 景点门票",
         f"  预估门票: ¥{attractions_total} (成人{adult_count}人 × {travel_days}天 × ¥100)",
