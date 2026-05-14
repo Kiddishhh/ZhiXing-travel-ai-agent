@@ -1,6 +1,6 @@
 """重排序器单元测试"""
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from langchain_core.documents import Document
 from app.rag.reranker import LLMReranker
 

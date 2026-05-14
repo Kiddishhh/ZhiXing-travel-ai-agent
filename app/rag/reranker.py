@@ -8,9 +8,9 @@ from typing import List
 
 from langchain_openai import ChatOpenAI
 from langchain_core.documents import Document
+from langchain_community.document_transformers import LongContextReorder
 
 from app.config import settings
-from langchain_community.document_transformers import LongContextReorder
 from app.utils.logger import app_logger
 
 
