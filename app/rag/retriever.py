@@ -29,6 +29,8 @@ class HybridRetriever:
         rrf_k: int = 60,
         final_top_k: int = 10,
         collection_name: str = "travel",
+        bm25_weight: float = 0.4,
+        dense_weight: float = 0.6,
     ):
         self.chroma_manager = chroma_manager
         self.bm25_top_k = bm25_top_k
@@ -36,6 +38,8 @@ class HybridRetriever:
         self.rrf_k = rrf_k
         self.final_top_k = final_top_k
         self.collection_name = collection_name
+        self.bm25_weight = bm25_weight
+        self.dense_weight = dense_weight
 
         self._bm25: BM25Okapi | None = None
         self._documents: List[Document] = []
@@ -126,17 +130,16 @@ class HybridRetriever:
         bm25_results: List[Tuple[str, float]],
         dense_results: List[Tuple[str, float]],
     ) -> List[Tuple[str, float]]:
-        """RRF（Reciprocal Rank Fusion）倒数排名融合"""
+        """加权 RRF（Reciprocal Rank Fusion）倒数排名融合"""
         rrf_scores: Dict[str, float] = {}
+        k = self.rrf_k
 
-        for rank, (doc_id, _) in enumerate(bm25_results, start=1):
-            rrf_scores[doc_id] = (
-                rrf_scores.get(doc_id, 0.0) + 1.0 / (self.rrf_k + rank)
-            )
+        for rank, (doc_id, _) in enumerate(bm25_results):
+            rrf_scores[doc_id] = self.bm25_weight * (1.0 / (k + rank + 1))
 
-        for rank, (doc_id, _) in enumerate(dense_results, start=1):
+        for rank, (doc_id, _) in enumerate(dense_results):
             rrf_scores[doc_id] = (
-                rrf_scores.get(doc_id, 0.0) + 1.0 / (self.rrf_k + rank)
+                rrf_scores.get(doc_id, 0.0) + self.dense_weight * (1.0 / (k + rank + 1))
             )
 
         sorted_results = sorted(
