@@ -8,35 +8,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Run RAG initialization (load docs → split → BM25 + ChromaDB index)
 python scripts/init_rag.py
 
-# Test RAG retrieval + reranking
-python scripts/test_rag.py
-
-# Test RAG pipeline (unit tests with visible flow)
-python -m pytest tests/test_rag/ -v -s
-
-# Test RAG pipeline (integration, requires real LLM + indexed docs)
-python scripts/test_rag_pipeline.py
-
-# Test LLM connection
-python scripts/test_llm.py
-
 # Initialize Postgres Checkpointer + Store tables
 python scripts/init_db.py
 
-# Run all tests (exclude slow network-dependent tests)
-python -m pytest tests/ -v --ignore=tests/test_api --ignore=scripts
+# Run all unit tests (no external services required)
+python -m pytest tests/rag/ tests/tools/ tests/agents/ -v -s
 
-# Run agent tests
-python -m pytest tests/test_agents/ -v
+# Run RAG unit tests
+python -m pytest tests/rag/ -v -s
 
-# Run MCP integration tests
-python -m pytest tests/test_mcp/ -v
+# Run tools unit tests
+python -m pytest tests/tools/ -v -s
 
-# Run tool unit tests
-python -m pytest tests/test_tools/ -v
+# Run agent unit tests
+python -m pytest tests/agents/ -v -s
 
 # Run a single test
-python -m pytest tests/test_agents/test_context_compression.py::TestGuardCompression::test_compresses_when_exceeds_threshold -v
+python -m pytest tests/agents/test_context_compression.py::TestGuardCompression::test_compresses_when_exceeds_threshold -v
+
+# Interactive tests (require real LLM/MCP/API)
+python tests/interactive/interactive_llm.py
+python tests/interactive/interactive_rag.py
+python tests/interactive/interactive_flow.py
+python tests/interactive/interactive_destination.py
+python tests/interactive/interactive_mcp.py
+python tests/interactive/interactive_weather.py
+python tests/interactive/interactive_search.py
+python tests/interactive/interactive_transport.py
+python tests/interactive/interactive_accommodation.py
+python tests/interactive/interactive_food.py
 
 # Check syntax of all Python files
 python -c "import ast; [ast.parse(open(p, encoding='utf-8').read()) for p in __import__('pathlib').Path('.').rglob('*.py') if 'venv' not in str(p)]"
