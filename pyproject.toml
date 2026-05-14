@@ -2,6 +2,11 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests that require a live LLM or network connection (deselect with '-m \"not slow\"')",
+]
+
 [project]
 name = "langgraph-travel-planner"
 version = "0.1.0"
