@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.documents import Document
 
 from app.config import settings
+from langchain_community.document_transformers import LongContextReorder
 from app.utils.logger import app_logger
 
 
@@ -38,6 +39,7 @@ class LLMReranker:
             api_key=settings.dashscope_api_key,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         )
+        self._reorder = LongContextReorder()
 
     def rerank(self, query: str, documents: List[Document]) -> List[Document]:
         """对候选文档进行重排序
@@ -74,7 +76,9 @@ class LLMReranker:
             if score >= self.score_threshold
         ]
 
-        result = filtered[:self.top_k]
+        top_docs = filtered[:self.top_k]
+
+        result = self._long_context_reorder(top_docs)
 
         app_logger.info(
             f"LLM 重排序完成: 返回 {len(result)}/{len(documents)} 条"
@@ -117,3 +121,9 @@ class LLMReranker:
             return max(0.0, min(10.0, score))
         app_logger.warning(f"无法解析 LLM 评分响应（将赋分 0）: {response}")
         return 0.0
+
+    def _long_context_reorder(self, documents: List[Document]) -> List[Document]:
+        """将相关文档放置头尾，不太相关的放中间，减少 lost-in-middle 效应"""
+        if len(documents) <= 2:
+            return documents
+        return self._reorder.transform_documents(documents)
