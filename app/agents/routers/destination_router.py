@@ -128,6 +128,7 @@ def classifier_node(state: DestinationRouterState) -> dict:
         temperature=0.0,
         api_key=settings.dashscope_api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        extra_body={"enable_thinking": False},
     )
     structured_llm = llm.with_structured_output(ClassificationResult, method="function_calling")
 
