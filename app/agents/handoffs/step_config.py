@@ -30,6 +30,7 @@ from app.tools.food_tools import query_food
 from app.tools.budget_tools import calculate_budget
 from app.tools.order_tools import create_order
 from app.tools.utility_tools import get_current_date
+from app.tools.memory_tools import save_user_preference, auto_save_from_state
 
 
 async def get_step_config() -> dict:
@@ -72,6 +73,7 @@ async def get_step_config() -> dict:
                 record_requirement_tool,
                 check_current_progress,
                 get_current_date,
+                save_user_preference,
             ],
             "requires": []
         },
@@ -118,6 +120,7 @@ async def get_step_config() -> dict:
                 go_back_to_step,
                 check_current_progress,
                 get_current_date,
+                save_user_preference,
             ],
             "requires": ["user_requirement"]
         },
@@ -161,6 +164,7 @@ async def get_step_config() -> dict:
                 go_back_to_step,
                 check_current_progress,
                 get_current_date,
+                save_user_preference,
             ],
             "requires": ["user_requirement", "selected_destination"]
         },
@@ -205,6 +209,7 @@ async def get_step_config() -> dict:
                 go_back_to_step,
                 check_current_progress,
                 get_current_date,
+                save_user_preference,
             ],
             "requires": ["user_requirement", "selected_destination", "selected_transport"]
         },
@@ -250,6 +255,7 @@ async def get_step_config() -> dict:
                 go_back_to_step,
                 check_current_progress,
                 get_current_date,
+                save_user_preference,
             ],
             "requires": ["user_requirement", "selected_destination", "selected_transport", "selected_accommodation_types"]
         },
@@ -296,6 +302,7 @@ async def get_step_config() -> dict:
                 go_back_to_step,
                 check_current_progress,
                 get_current_date,
+                save_user_preference,
             ],
             "requires": ["user_requirement", "selected_destination", "selected_transport", "selected_accommodation_types", "selected_food_types"]
         },
@@ -339,6 +346,7 @@ async def get_step_config() -> dict:
                 go_back_to_step,
                 check_current_progress,
                 get_current_date,
+                save_user_preference,
             ],
             "requires": ["user_requirement", "itinerary"]
         },
@@ -381,6 +389,8 @@ async def get_step_config() -> dict:
                 go_back_to_step,
                 check_current_progress,
                 get_current_date,
+                save_user_preference,
+                auto_save_from_state,
             ],
             "requires": ["user_requirement", "itinerary", "budget"]
         },
