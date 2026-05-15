@@ -80,13 +80,26 @@ class TestCalculateBudget:
     def test_calculate_budget_over_limit(self):
         """测试超预算场景"""
         _print_stage("calculate_budget", 3, 2)
-        print("[注入] budget_max=500 (超预算)")
+        print("[注入] budget_max=500 (人均), 2人 → 总预算上限=1000, grand_total≈3740 超支")
         runtime = make_mock_runtime()
         runtime.state["user_requirement"]["budget_max"] = 500
         result = calculate_budget.func(runtime=runtime)
 
         assert isinstance(result, str)
         assert "超支" in result or "超出" in result
+        assert "人均" in result
+
+    def test_calculate_budget_with_rooms(self):
+        """测试多房间预算计算"""
+        _print_stage("calculate_budget", 3, 3)
+        print("[注入] rooms_needed=2, 4成人")
+        runtime = make_mock_runtime()
+        runtime.state["user_requirement"]["adult_count"] = 4
+        result = calculate_budget.func(rooms_needed=2, runtime=runtime)
+
+        assert isinstance(result, str)
+        assert "2间" in result
+        print(f"[OK] 住宿费中已包含 2 间房计算")
 
     def test_calculate_budget_missing_data(self):
         """测试缺少数据时的处理"""
