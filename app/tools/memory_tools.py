@@ -54,8 +54,8 @@ async def save_user_preference(
             # 数组字段：包装为列表后合并
             fields = {col: [value]}
         elif preference_type == "custom":
-            # 扩展字段
-            fields = {"extensions": {preference_type: value}}
+            # 扩展字段：以 value 为键，防止多个 custom 偏好相互覆盖
+            fields = {"extensions": {value: value}}
         else:
             # 标量字段
             fields = {col: value}
@@ -112,13 +112,7 @@ async def auto_save_from_state(
         if selected_destination:
             fields["favorite_destinations"] = [selected_destination]
 
-        # dietary_preferences（从 food_options 推断）
-        food_options = state.get("food_options", []) or []
-        food_types = [f.get("type", "") for f in food_options if f.get("type")]
-        if food_types:
-            fields["dietary_preferences"] = food_types
-
-        # 统计字段
+# 统计字段
         travel_days = req.get("travel_days", 0)
         departure_date = req.get("departure_date")
         if travel_days:
