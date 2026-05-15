@@ -138,7 +138,7 @@ async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
     resolver = await create_step_config_resolver()
 
     llm = ChatOpenAI(
-        model="qwen3.6-plus",
+        model="qwen3.5-plus",
         api_key=settings.dashscope_api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
@@ -167,7 +167,7 @@ def _make_agent_node(llm: ChatOpenAI, resolver: StepConfigResolver):
 
     async def agent_node(state: TravelState) -> dict:
         # 根据 current_step 解析 prompt + tools
-        system_prompt, tools = resolver.resolve(state)
+        system_prompt, tools = await resolver.resolve(state)
 
         # 构建注入 LLM 的三层消息（临时，不存入 state）
         messages = []
