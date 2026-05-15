@@ -72,6 +72,12 @@ register_tool("calculate_budget", calculate_budget)
 register_tool("create_order", create_order)
 register_tool("get_current_date", get_current_date)
 
+# ── 注册记忆工具 ──
+from .memory_tools import save_user_preference, auto_save_from_state
+
+register_tool("save_user_preference", save_user_preference)
+register_tool("auto_save_from_state", auto_save_from_state)
+
 __all__ = [
     "TOOL_REGISTRY",
     "register_tool",
