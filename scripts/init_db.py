@@ -25,23 +25,27 @@ async def init_database():
     app_logger.info(f"连接数据库: {settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}")
 
     try:
-        # 1. 初始化业务表（用户、会话、消息）在第九章会使用
-        # app_logger.info("初始化业务表...")
-        # await init_db()
-        # app_logger.info("✅ 业务表创建成功")
-
-        # 2. 初始化 LangGraph Checkpointer 表（存储对话状态）
+        # 1. 初始化 LangGraph Checkpointer 表（存储对话状态）
         async with AsyncConnectionPool(conninfo=db_url, min_size=2, max_size=10) as pool:
             app_logger.info("初始化 Checkpointer 表...")
             async with AsyncPostgresSaver.from_conn_string(db_url) as checkpointer:
                 await checkpointer.setup()
                 app_logger.info("[SUCCESS] LangGraph Checkpointer 表创建成功")
 
-            # 3. 初始化 LangGraph Store 表（存储持久化数据）
+            # 2. 初始化 LangGraph Store 表（存储持久化数据）
             app_logger.info("初始化 Store 表...")
             async with AsyncPostgresStore.from_conn_string(db_url) as store:
                 await store.setup()
                 app_logger.info("[SUCCESS] LangGraph Store 表创建成功")
+
+        # 3. 初始化用户长期记忆表（user_profiles）
+        from app.core.memory_store import MemoryStoreManager
+        app_logger.info("初始化用户长期记忆表...")
+        memory_manager = await MemoryStoreManager.get_instance()
+        try:
+            app_logger.info("[SUCCESS] 用户长期记忆表创建成功")
+        finally:
+            await memory_manager.close()
 
         app_logger.info("[SUCCESS] 所有数据库表初始化完成！")
 
