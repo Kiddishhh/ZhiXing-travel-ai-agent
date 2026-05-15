@@ -22,6 +22,7 @@ from langchain_core.messages import HumanMessage
 
 from app.core.state import create_initial_state
 from app.core.checkpointer import get_checkpointer
+from app.core.memory_store import get_memory_store_manager
 from app.agents.handoffs.graph import create_travel_planner
 from app.utils.logger import app_logger
 
@@ -80,7 +81,9 @@ async def main():
         print("[OK] Checkpointer 已就绪")
 
         print("正在编译 Travel Planner Graph...")
-        graph = await create_travel_planner(checkpointer=checkpointer)
+        memory_mgr = await get_memory_store_manager()
+        store = memory_mgr.get_store()
+        graph = await create_travel_planner(checkpointer=checkpointer, store=store)
         print("[OK] Graph 编译完成")
     except Exception as e:
         print(f"[ERROR] 初始化失败: {type(e).__name__}: {e}")

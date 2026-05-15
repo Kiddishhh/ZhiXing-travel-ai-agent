@@ -13,6 +13,7 @@ Handoffs 主流程 Graph 构建
 """
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.store.base import BaseStore
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph.message import RemoveMessage
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -124,7 +125,10 @@ def _make_guard_node(llm: ChatOpenAI, max_tokens: int = None):
     return guard_node
 
 
-async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
+async def create_travel_planner(
+    checkpointer: BaseCheckpointSaver = None,
+    store: BaseStore = None,
+):
     """
     构建 handoffs 主流程 Graph。
 
@@ -133,6 +137,7 @@ async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
                                   │
                                   └── (无 tool_calls) → END
 
+    store: LangGraph Store，用于工具通过 runtime.store 跨会话读写持久化数据
     返回编译后的图 (await graph.ainvoke(initial_state) 即可运行)
     """
     resolver = await create_step_config_resolver()
@@ -159,7 +164,7 @@ async def create_travel_planner(checkpointer: BaseCheckpointSaver = None):
     app_logger.info(
         f"Handoffs 主流程 Graph 构建完成 (agent + {len(all_tools)} 个工具)"
     )
-    return builder.compile(checkpointer=checkpointer)
+    return builder.compile(checkpointer=checkpointer, store=store)
 
 
 def _make_agent_node(llm: ChatOpenAI, resolver: StepConfigResolver):
