@@ -184,37 +184,56 @@ class MemoryStoreManager:
           新值覆盖旧值；SQL 层 COALESCE 保证 NULL 不覆写已有数据
         - 统计字段（total_trips）：累加；last_destination / last_travel_date 有则更新
         - extensions：新旧 dict 浅合并
+
+        所有 DB 操作在同一个 connection 内完成，避免 TOCTOU 竞态窗口。
         """
         try:
-            # 读取旧画像
-            old = await self.get_profile(user_id) or {}
-
-            # ---- 数组字段：合并 + 去重 + 截断 ----
-            array_fields = ["travel_styles", "favorite_destinations", "dietary_preferences"]
-            for field in array_fields:
-                old_vals = old.get(field, []) or []
-                new_vals = fields.get(field) or []
-                if new_vals:
-                    merged = list(dict.fromkeys(old_vals + new_vals))[:10]
-                else:
-                    merged = old_vals
-                fields[field] = merged
-
-            # ---- extensions：dict 浅合并 ----
-            old_ext = old.get("extensions", {}) or {}
-            new_ext = fields.get("extensions") or {}
-            if new_ext:
-                fields["extensions"] = {**old_ext, **new_ext}
-            else:
-                fields["extensions"] = old_ext
-
-            # ---- 统计字段：total_trips 累加 ----
-            if "total_trips" in fields:
-                old_trips = old.get("total_trips", 0) or 0
-                fields["total_trips"] = old_trips + int(fields["total_trips"])
-
-            # ---- 执行 UPSERT ----
             async with self.pool.connection() as conn:
+                # ---- 读取旧画像（同一连接内） ----
+                old: dict = {}
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "SELECT * FROM user_profiles WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    row = await cur.fetchone()
+                    if row is not None:
+                        columns = [desc[0] for desc in cur.description]
+                        old = dict(zip(columns, row))
+                        # 转换日期等不可 JSON 序列化的字段
+                        if old.get("last_travel_date"):
+                            old["last_travel_date"] = str(old["last_travel_date"])
+                        if old.get("created_at"):
+                            old["created_at"] = str(old["created_at"])
+                        if old.get("updated_at"):
+                            old["updated_at"] = str(old["updated_at"])
+
+                # ---- 数组字段：合并 + 去重 + 截断 ----
+                # 新值在前保证近期偏好优先，旧值自然被截断剔除
+                array_fields = ["travel_styles", "favorite_destinations", "dietary_preferences"]
+                for field in array_fields:
+                    old_vals = old.get(field, []) or []
+                    new_vals = fields.get(field) or []
+                    if new_vals:
+                        merged = list(dict.fromkeys(new_vals + old_vals))[:10]
+                    else:
+                        merged = old_vals
+                    fields[field] = merged
+
+                # ---- extensions：dict 浅合并 ----
+                old_ext = old.get("extensions", {}) or {}
+                new_ext = fields.get("extensions") or {}
+                if new_ext:
+                    fields["extensions"] = {**old_ext, **new_ext}
+                else:
+                    fields["extensions"] = old_ext
+
+                # ---- 统计字段：total_trips 累加 ----
+                if "total_trips" in fields:
+                    old_trips = old.get("total_trips", 0) or 0
+                    fields["total_trips"] = old_trips + int(fields["total_trips"])
+
+                # ---- 执行 UPSERT（同一连接内） ----
                 await conn.execute(
                     UPSERT_PROFILE_SQL,
                     [
@@ -231,8 +250,25 @@ class MemoryStoreManager:
                     ],
                 )
 
-            # ---- 读回完整画像 ----
-            return await self.get_profile(user_id)
+                # ---- 读回完整画像（同一连接内） ----
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "SELECT * FROM user_profiles WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    row = await cur.fetchone()
+                    if row is None:
+                        return None
+                    columns = [desc[0] for desc in cur.description]
+                    profile = dict(zip(columns, row))
+                    if profile.get("last_travel_date"):
+                        profile["last_travel_date"] = str(profile["last_travel_date"])
+                    if profile.get("created_at"):
+                        profile["created_at"] = str(profile["created_at"])
+                    if profile.get("updated_at"):
+                        profile["updated_at"] = str(profile["updated_at"])
+                    return profile
+
         except Exception as e:
             app_logger.warning(f"upsert_profile 失败 (user_id={user_id}): {e}")
             return None
