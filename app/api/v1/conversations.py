@@ -64,7 +64,7 @@ async def get_conversation(conv_id: str, pool_user: tuple = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
 
     conv = dict(row)
-    if conv["user_id"] != user_id:
+    if str(conv["user_id"]) != str(user_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
 
     return conv
@@ -87,7 +87,7 @@ async def update_conversation(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
 
         conv = dict(existing)
-        if conv["user_id"] != user_id:
+        if str(conv["user_id"]) != str(user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
 
         updates = body.model_dump(exclude_none=True)
@@ -123,7 +123,7 @@ async def delete_conversation(conv_id: str, pool_user: tuple = Depends(get_db)):
         )
         if existing is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
-        if dict(existing)["user_id"] != user_id:
+        if str(dict(existing)["user_id"]) != str(user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
 
         await conn.execute(

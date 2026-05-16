@@ -56,7 +56,7 @@ async def chat_stream(body: ChatStreamRequest, pool_user: tuple = Depends(get_db
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
 
     conv_data = dict(conv)
-    if conv_data["user_id"] != user_id:
+    if str(conv_data["user_id"]) != str(user_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
 
     thread_id = body.conversation_id
@@ -153,7 +153,7 @@ async def get_messages(
         conv = await conn.fetchrow("SELECT user_id FROM conversations WHERE id = $1", conv_id)
         if conv is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
-        if dict(conv)["user_id"] != user_id:
+        if str(dict(conv)["user_id"]) != str(user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
 
         rows = await conn.fetch(

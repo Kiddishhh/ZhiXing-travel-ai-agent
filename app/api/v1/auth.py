@@ -77,7 +77,7 @@ async def login(body: LoginRequest, pool: AsyncConnectionPool = Depends(get_db_p
             "UPDATE users SET last_login_at = NOW() WHERE id = $1", user["id"]
         )
 
-    token = create_access_token(user_id=user["id"], role=user["role"])
+    token = create_access_token(user_id=str(user["id"]), role=user["role"])
     app_logger.info(f"用户登录: {body.username}")
 
     return TokenResponse(access_token=token)
