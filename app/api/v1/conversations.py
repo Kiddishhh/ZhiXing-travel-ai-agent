@@ -1,0 +1,134 @@
+"""会话管理路由：CRUD 5 个端点"""
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.schemas.conversation import ConversationCreate, ConversationUpdate, ConversationResponse
+from app.api.v1.deps import get_db
+from app.utils.logger import app_logger
+
+router = APIRouter(prefix="/conversations", tags=["会话"])
+
+
+@router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
+async def create_conversation(body: ConversationCreate, pool_user: tuple = Depends(get_db)):
+    """创建新会话"""
+    pool, user_id = pool_user
+    conv_id = uuid4()
+
+    async with pool.connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO conversations (id, user_id, title, current_model, system_prompt)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+            """,
+            conv_id, user_id, body.title, body.current_model, body.system_prompt,
+        )
+
+    app_logger.info(f"会话创建: {conv_id} (user={user_id})")
+    return dict(row)
+
+
+@router.get("", response_model=list[ConversationResponse])
+async def list_conversations(
+    pool_user: tuple = Depends(get_db),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """获取会话列表"""
+    pool, user_id = pool_user
+    async with pool.connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT * FROM conversations
+            WHERE user_id = $1 AND status != 'deleted'
+            ORDER BY updated_at DESC
+            LIMIT $2 OFFSET $3
+            """,
+            user_id, limit, offset,
+        )
+    return [dict(r) for r in rows]
+
+
+@router.get("/{conv_id}", response_model=ConversationResponse)
+async def get_conversation(conv_id: str, pool_user: tuple = Depends(get_db)):
+    """获取会话详情"""
+    pool, user_id = pool_user
+    async with pool.connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM conversations WHERE id = $1", conv_id
+        )
+
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+
+    conv = dict(row)
+    if conv["user_id"] != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
+
+    return conv
+
+
+@router.patch("/{conv_id}", response_model=ConversationResponse)
+async def update_conversation(
+    conv_id: str,
+    body: ConversationUpdate,
+    pool_user: tuple = Depends(get_db),
+):
+    """更新会话（归属校验）"""
+    pool, user_id = pool_user
+
+    async with pool.connection() as conn:
+        existing = await conn.fetchrow(
+            "SELECT * FROM conversations WHERE id = $1", conv_id
+        )
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+
+        conv = dict(existing)
+        if conv["user_id"] != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
+
+        updates = body.model_dump(exclude_none=True)
+        if not updates:
+            return conv
+
+        set_clauses = []
+        params = []
+        for i, (key, val) in enumerate(updates.items(), start=1):
+            set_clauses.append(f"{key} = ${i}")
+            params.append(val)
+
+        params.append(conv_id)
+        conv_id_idx = len(params)
+
+        sql = (
+            f"UPDATE conversations SET {', '.join(set_clauses)}, updated_at = NOW() "
+            f"WHERE id = ${conv_id_idx} RETURNING *"
+        )
+        row = await conn.fetchrow(sql, *params)
+
+    return dict(row)
+
+
+@router.delete("/{conv_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation(conv_id: str, pool_user: tuple = Depends(get_db)):
+    """软删除会话"""
+    pool, user_id = pool_user
+
+    async with pool.connection() as conn:
+        existing = await conn.fetchrow(
+            "SELECT * FROM conversations WHERE id = $1", conv_id
+        )
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+        if dict(existing)["user_id"] != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
+
+        await conn.execute(
+            "UPDATE conversations SET status = 'deleted', updated_at = NOW() WHERE id = $1",
+            conv_id,
+        )
+
+    app_logger.info(f"会话已删除: {conv_id}")
