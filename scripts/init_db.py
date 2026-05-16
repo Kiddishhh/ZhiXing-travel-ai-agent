@@ -47,6 +47,15 @@ async def init_database():
         finally:
             await memory_manager.close()
 
+        # 4. 初始化业务表（users, conversations, messages）
+        from app.core.database import DatabaseManager
+        app_logger.info("初始化业务表...")
+        db_mgr = await DatabaseManager.get_instance()
+        try:
+            app_logger.info("[SUCCESS] 业务表创建成功")
+        finally:
+            await db_mgr.close()
+
         app_logger.info("[SUCCESS] 所有数据库表初始化完成！")
 
     except Exception as e:
