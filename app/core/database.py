@@ -23,9 +23,9 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(20) DEFAULT 'user',
     is_active BOOLEAN DEFAULT true,
     preferences JSONB DEFAULT '{}',
-    last_login_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 """
 
@@ -40,8 +40,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     total_tokens INTEGER DEFAULT 0,
     status VARCHAR(20) DEFAULT 'active',
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 """
 
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS messages (
     feedback INTEGER DEFAULT 0,
     is_error BOOLEAN DEFAULT false,
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 """
 
@@ -94,9 +94,9 @@ class DatabaseManager:
             app_logger.info("初始化业务表连接池...")
             self.pool = AsyncConnectionPool(
                 conninfo=settings.database_url,
-                min_size=2,
-                max_size=10,
-                timeout=30,
+                min_size=settings.db_min_conn,
+                max_size=settings.db_max_conn,
+                timeout=settings.db_timeout,
             )
             await self.pool.open()
 
