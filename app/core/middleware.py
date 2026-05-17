@@ -1,70 +1,175 @@
 """
-步骤配置中间件
+AgentMiddleware 实现
 
-StepConfigResolver 在每次 LLM 调用前:
-1. 读取 current_step
-2. 查 step_config 获取对应 prompt + tools
-3. 验证前置依赖
-4. 返回渲染后的 prompt 和工具列表
+TravelPlannerMiddleware 继承 AgentMiddleware, 提供三个钩子:
+- abefore_model: token 计数 + 上下文压缩
+- awrap_model_call: 步骤 prompt/tools 注入 + 画像注入
+- awrap_tool_call: 工具调用错误包装
+
+替代了原来的 StepConfigResolver + _make_guard_node + _make_agent_node。
 """
+from typing import Callable, Awaitable
+
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
+from langchain_core.messages.utils import count_tokens_approximately
+from langgraph.graph.message import RemoveMessage
+from langchain.agents.middleware import (
+    AgentMiddleware,
+    ModelRequest,
+    ModelResponse,
+)
+from langgraph.prebuilt.tool_node import ToolCallRequest
+
+from app.core.state import TravelState
 from app.utils.logger import app_logger
-from app.core.memory_store import get_memory_store_manager
+
+# ── 压缩常量 ──
+
+COMPRESSION_MAX_TOKENS = 12000
+COMPRESSION_KEEP_RECENT = 10
+
+COMPRESSION_SYSTEM_PROMPT = """你是一个对话摘要专家。请将以下旅行规划对话压缩为简洁摘要。
+
+压缩规则：
+1. 只提取事实数据：日期、目的地、人数、预算、已选选项（交通/住宿/餐饮）
+2. 只提取用户偏好和特殊需求
+3. 只提取工具返回的具体数据（航班号、酒店名、价格、菜品等）
+4. 禁止描述 AI 做过什么、问过什么、建议过什么
+5. 去除闲聊、重复确认、冗余表达
+6. 使用中文，不超过 800 字
+
+待压缩对话：
+{messages_to_compress}
+
+请生成摘要："""
 
 
-class StepConfigResolver:
-    """步骤配置解析器 - 根据 current_step 返回对应的 prompt 和 tools"""
+class TravelPlannerMiddleware(AgentMiddleware):
+    """旅行规划中间件 — 上下文压缩 + 步骤配置注入"""
 
-    def __init__(self, step_config: dict):
+    state_schema = TravelState
+
+    def __init__(
+        self,
+        step_config: dict,
+        compression_llm=None,
+        compression_max_tokens: int = None,
+        compression_keep_recent: int = None,
+    ):
+        super().__init__()
         self._step_config = step_config
+        self._compression_llm = compression_llm
+        self._compression_max_tokens = (
+            compression_max_tokens
+            if compression_max_tokens is not None
+            else COMPRESSION_MAX_TOKENS
+        )
+        self._compression_keep_recent = (
+            compression_keep_recent
+            if compression_keep_recent is not None
+            else COMPRESSION_KEEP_RECENT
+        )
 
+    # ── 上下文压缩 ──
 
-    #状态注入current_step,返回对应步骤的system_prompt and tools
-    async def resolve(self, state: dict) -> tuple:
-        """
-        根据 current_step 解析步骤配置。
+    async def abefore_model(self, state: TravelState, runtime) -> dict | None:
+        """模型调用前检测并压缩上下文"""
+        if self._compression_llm is None:
+            return None
 
-        参数:
-        - state: 当前 TravelState 字典
+        messages = list(state.get("messages", []))
+        token_count = count_tokens_approximately(messages)
 
-        返回:
-        - (system_prompt: str, tools: list)
+        if token_count <= self._compression_max_tokens:
+            return None
 
-        抛出:
-        - ValueError: 未知步骤或前置依赖缺失
-        """
+        if len(messages) <= self._compression_keep_recent:
+            return None
+
+        old_msgs = messages[:-self._compression_keep_recent]
+
+        messages_text = "\n".join([
+            f"[{type(m).__name__}]: {m.content if hasattr(m, 'content') else str(m)}"
+            for m in old_msgs
+        ])
+
+        previous_summary = state.get("context_summary")
+        if previous_summary:
+            compression_prompt = (
+                f"之前的对话摘要：\n{previous_summary}\n\n"
+                f"新的待压缩对话：\n{messages_text}\n\n"
+                f"请将以上内容合并为一份完整的简洁摘要："
+            )
+        else:
+            compression_prompt = COMPRESSION_SYSTEM_PROMPT.format(
+                messages_to_compress=messages_text
+            )
+
+        try:
+            response = await self._compression_llm.ainvoke(
+                [HumanMessage(content=compression_prompt)]
+            )
+            summary = response.content
+            app_logger.info(
+                f"上下文压缩完成: {len(old_msgs)} 条消息 → 摘要 ({len(summary)} 字符)"
+            )
+        except Exception as e:
+            app_logger.error(f"上下文压缩失败: {e}, 降级为简单截断")
+            summary = None
+
+        import uuid as _uuid
+
+        result_messages = []
+        for msg in old_msgs:
+            msg_id = (
+                getattr(msg, 'id', None)
+                or getattr(msg, 'message_id', None)
+                or str(_uuid.uuid4())
+            )
+            result_messages.append(RemoveMessage(id=msg_id))
+
+        result = {"messages": result_messages}
+        if summary:
+            result["context_summary"] = summary
+
+        return result
+
+    # ── 配置注入 ──
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
+    ) -> ModelResponse:
+        """拦截模型调用，注入步骤 prompt 和 tools"""
+        state = request.state
         current_step = state.get("current_step", "requirement_collection")
 
-        app_logger.info(f"当前步骤: {current_step}")
-
         if current_step not in self._step_config:
-            app_logger.error(f"未知步骤: {current_step}")
             raise ValueError(f"未知步骤: {current_step}")
 
-        step_config = self._step_config[current_step]
+        cfg = self._step_config[current_step]
 
-        # ── 验证前置依赖 ──
-        for required_field in step_config["requires"]:
-            val = state.get(required_field)
-            if val is None:
-                error_msg = (
-                    f"步骤 {current_step} 需要 '{required_field}' 字段, "
-                    f"但当前未设置"
+        for required_field in cfg["requires"]:
+            if state.get(required_field) is None:
+                raise ValueError(
+                    f"步骤 {current_step} 需要 '{required_field}' 字段，但当前未设置"
                 )
-                app_logger.error(f"前置依赖缺失: {error_msg}")
-                raise ValueError(error_msg)
-            app_logger.debug(f"前置依赖满足: {required_field}")
 
-        # ── 渲染 prompt ──
         try:
-            system_prompt = step_config["prompt"].format(**state)
-        except KeyError as e:
-            app_logger.warning(f"prompt 占位符无法渲染: {e}, 使用原始模板")
-            system_prompt = step_config["prompt"]
+            system_prompt = cfg["prompt"].format(**state)
+        except KeyError:
+            system_prompt = cfg["prompt"]
 
-        # ── 注入用户长期记忆 ──
+        context_summary = state.get("context_summary")
+        if context_summary:
+            system_prompt += f"\n\n[已收集的旅行信息]\n\n{context_summary}"
+
         user_id = state.get("user_id")
         if user_id:
             try:
+                from app.core.memory_store import get_memory_store_manager
+
                 manager = await get_memory_store_manager()
                 profile = await manager.get_profile(user_id)
                 if profile:
@@ -74,8 +179,36 @@ class StepConfigResolver:
             except Exception as e:
                 app_logger.warning(f"画像注入失败，跳过: {e}")
 
-        app_logger.info(f"已解析步骤配置: {len(step_config['tools'])} 个工具")
-        return system_prompt, step_config["tools"]
+        modified = request.override(
+            system_message=SystemMessage(content=system_prompt),
+            tools=cfg["tools"],
+        )
+        return await handler(modified)
+
+    # ── 工具调用错误包装 ──
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage]],
+    ) -> ToolMessage:
+        """拦截工具调用，将 Pydantic 校验错误转为引导性提示"""
+        try:
+            return await handler(request)
+        except Exception as e:
+            msg = str(e)
+            if "Input should be" in msg or "validation error" in msg.lower():
+                return ToolMessage(
+                    content=(
+                        f"参数校验未通过：\n{msg}\n\n"
+                        f"请向用户逐一确认上述信息，补充完整后重新调用。"
+                    ),
+                    tool_call_id=request.tool_call["id"],
+                )
+            return ToolMessage(
+                content=f"操作未能完成：{msg[:300]}。请向用户说明并询问如何处理。",
+                tool_call_id=request.tool_call["id"],
+            )
 
 
 def _format_profile_for_prompt(profile: dict) -> str:
@@ -121,12 +254,22 @@ def _format_profile_for_prompt(profile: dict) -> str:
     return "\n".join(lines)
 
 
-async def create_step_config_resolver() -> StepConfigResolver:
-    """
-    工厂函数: 创建预加载配置的 StepConfigResolver 实例
-    """
+async def create_travel_planner_middleware() -> TravelPlannerMiddleware:
+    """工厂函数: 创建预加载 step_config 的 TravelPlannerMiddleware"""
+    from langchain_openai import ChatOpenAI
     from app.agents.handoffs.step_config import get_step_config
+    from app.config import settings
 
     step_config = await get_step_config()
-    app_logger.info("StepConfigResolver 创建完成")
-    return StepConfigResolver(step_config)
+
+    compression_llm = ChatOpenAI(
+        model=settings.qwen_model_name,
+        api_key=settings.dashscope_api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+
+    app_logger.info("TravelPlannerMiddleware 创建完成")
+    return TravelPlannerMiddleware(
+        step_config=step_config,
+        compression_llm=compression_llm,
+    )

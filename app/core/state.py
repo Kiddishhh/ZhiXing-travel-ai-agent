@@ -6,7 +6,7 @@
 from operator import add
 from typing import Annotated, Literal, TypedDict, Optional, NotRequired, List
 
-from langgraph.graph import MessagesState
+from langchain.agents.middleware import AgentState
 
 # ── 枚举 ──
 
@@ -152,7 +152,7 @@ STEP_CLEANUP_MAP: dict[PlanningStep, list[str]] = {
 
 # ── 主 State ──
 
-class TravelState(MessagesState):
+class TravelState(AgentState):
     """旅行规划系统主状态，继承 MessagesState 自动获得 messages 字段"""
 
     # ── 流程控制 ──
@@ -196,19 +196,19 @@ class TravelState(MessagesState):
     updated_at: NotRequired[float]   # 更新时间
 
 
-def create_initial_state(user_id: str, session_id: str) -> dict:
+def create_initial_state(user_id: str, session_id: str) -> TravelState:
     """创建初始状态，返回符合 TravelState 的 dict"""
     import time
-    return {
-        "messages": [],
-        "current_step": "requirement_collection",
-        "destination_options": [],
-        "transport_options": [],
-        "accommodation_options": [],
-        "food_options": [],
-        "approval_pending": False,
-        "user_id": user_id,
-        "session_id": session_id,
-        "created_at": time.time(),
-        "updated_at": time.time(),
-    }
+    return TravelState(
+        messages=[],
+        current_step="requirement_collection",
+        destination_options=[],
+        transport_options=[],
+        accommodation_options=[],
+        food_options=[],
+        approval_pending=False,
+        user_id=user_id,
+        session_id=session_id,
+        created_at=time.time(),
+        updated_at=time.time(),
+    )
