@@ -48,23 +48,24 @@ A LangGraph-based Chinese travel planning assistant with an 8-step sequential wo
 
 ### Main Graph (`app/agents/handoffs/graph.py`)
 
+Built with `langchain.agents.create_agent` + `TravelPlannerMiddleware`. The internal loop is managed by `create_agent`:
+
 ```
-START → guard → agent ──→ tools → guard → agent (loop)
-                   └── (no tool_calls) → END
+abefore_model(压缩) → awrap_model_call(注入 prompt/tools) → LLM → ToolNode → 循环
 ```
 
-Three custom nodes:
-- **guard** — Token-aware context compression. Counts tokens via `count_tokens_approximately`, compresses old messages into a `context_summary` when exceeding 12000 tokens. Keeps last 10 messages. Fallback to truncation on LLM failure.
-- **agent** — Three-layer message assembly: (1) step prompt from `StepConfigResolver` (instruction priority), (2) `[已收集的旅行信息]` summary if exists (fact reference), (3) conversation history. All SystemMessages are ephemeral — only AI response goes to `state["messages"]`.
-- **tools** — `ToolNode` with `_wrap_tool_error` handler that converts Pydantic validation errors into friendly guidance prompts.
+Three middleware hooks in `TravelPlannerMiddleware(AgentMiddleware)`:
+- **abefore_model** — Token-aware context compression. Counts tokens via `count_tokens_approximately`, compresses old messages into a `context_summary` when exceeding 12000 tokens. Keeps last 10 messages. Fallback to truncation on LLM failure.
+- **awrap_model_call** — Reads `current_step`, validates prerequisites, renders prompt template, injects user profile, appends `context_summary`, then calls `request.override(system_message=..., tools=...)` to set step-specific prompt and tools.
+- **awrap_tool_call** — Wraps Pydantic validation errors into friendly guidance prompts; re-raises non-validation errors.
 
-### Context Compression (`graph.py`)
+### Context Compression (`middleware.py`)
 
-`_make_guard_node(llm)` — runs before every agent call. When token count exceeds `COMPRESSION_MAX_TOKENS` (12000), splits messages into old (compress) and recent (keep 10), calls `ChatOpenAI` to generate a facts-only summary (≤800 chars, no AI behavior description), removes old messages via `RemoveMessage`, and stores summary in `state["context_summary"]`. Previous summaries are merged on re-compression.
+`TravelPlannerMiddleware.abefore_model()` — runs before every model call. When token count exceeds `COMPRESSION_MAX_TOKENS` (12000), splits messages into old (compress) and recent (keep 10), calls `ChatOpenAI` to generate a facts-only summary (≤800 chars, no AI behavior description), removes old messages via `RemoveMessage`, and stores summary in `state["context_summary"]`. Previous summaries are merged on re-compression.
 
 ### State (`app/core/state.py`)
 
-`TravelState(MessagesState)` — `messages` holds pure conversation (Human/AI/Tool only, no SystemMessages). Key fields:
+`TravelState(AgentState)` — `messages` holds pure conversation (Human/AI/Tool only, no SystemMessages). Key fields:
 - `current_step` — one of 8 `PlanningStep` values
 - `context_summary` — compressed history (set by guard, used ephemerally by agent)
 - `user_requirement` — dict with `budget_level` and `travel_styles` as `Optional` (tool auto-computes them)
@@ -92,11 +93,11 @@ Defined in `app/core/state.py` as `PlanningStep` literal:
 - **📋 查询工具 / 🔒 确认工具 / ↩️ 回退工具** — tools categorized by permission level
 - **任务** — step-specific instructions
 
-`app/core/middleware.py` — `StepConfigResolver` reads `current_step`, validates prerequisites, renders `{field}` placeholders from state, returns prompt + tools.
+`app/core/middleware.py` — `TravelPlannerMiddleware(AgentMiddleware)` reads `current_step`, validates prerequisites, renders `{field}` placeholders from state, injects `context_summary` and user profile, then uses `request.override()` to set step-specific `system_message` and `tools`.
 
 ### State Transition Tools (`app/tools/state_transition.py`)
 
-17 tools use `Command(update={...})` **without `goto`** — routing is handled by the graph edge `tools → guard → agent`. The only exception: `generate_order_tool` uses `goto="__end__"` to terminate the graph. All transition tool ToolMessages contain "brake signals" that guide the LLM to introduce the next step to the user and wait for confirmation.
+17 tools use `Command(update={...})` **without `goto`** — routing is handled by `create_agent`'s internal loop. The only exception: `generate_order_tool` uses `goto="__end__"` to terminate the graph. All transition tool ToolMessages contain "brake signals" that guide the LLM to introduce the next step to the user and wait for confirmation.
 
 ### Query Tools
 
@@ -123,7 +124,7 @@ Data-fetching tools return `str` (Markdown-formatted results):
 All LLM calls use `ChatOpenAI` with DashScope's OpenAI-compatible endpoint:
 ```python
 ChatOpenAI(
-    model="qwen3.6-plus",
+    model="qwen3.5-plus",
     api_key=settings.dashscope_api_key,
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
@@ -143,7 +144,7 @@ Model name default in `app/config.py` → `settings.qwen_model_name`. Structured
 - **Settings**: pydantic-settings from `.env`, cached `get_settings()`
 - **Logger**: loguru — console (colorized), file rotation (JSON, 10MB/7-day), error-only file
 - **State updates**: `Annotated[list, add]` reducer for parallel results; `Command(update)` without goto for step transitions
-- **Error handling**: `_wrap_tool_error` in graph.py wraps tool exceptions as guidance prompts; fallback compression on LLM failure
+- **Error handling**: `awrap_tool_call` in middleware.py wraps Pydantic validation errors as guidance prompts, re-raises other exceptions; fallback compression on LLM failure
 - **Testing**: `pytest` + `pytest-asyncio` (`@pytest.mark.asyncio`), mock LLM via `AsyncMock`
 
 ### Known Issues
