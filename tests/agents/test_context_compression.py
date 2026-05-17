@@ -1,4 +1,8 @@
-"""上下文压缩 guard 节点测试 — 使用 mock LLM，无需真实 API Key"""
+"""上下文压缩 guard 节点测试 — 使用 mock LLM，无需真实 API Key
+
+已适配 TravelPlannerMiddleware (替代原来的 _make_guard_node + StateGraph)
+"""
+import uuid as _uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -25,23 +29,29 @@ def make_messages(count: int) -> list:
     """生成指定数量的 HumanMessage + AIMessage 交替消息对，带填充使 token 数显著增长"""
     msgs = []
     for i in range(count):
-        msgs.append(HumanMessage(content=f"用户消息 {i} " + "extra " * 50))
-        msgs.append(AIMessage(content=f"AI回复 {i} " + "extra " * 50))
+        msgs.append(HumanMessage(
+            content=f"用户消息 {i} " + "extra " * 50,
+            id=str(_uuid.uuid4()),
+        ))
+        msgs.append(AIMessage(
+            content=f"AI回复 {i} " + "extra " * 50,
+            id=str(_uuid.uuid4()),
+        ))
     return msgs
 
 
 class TestGuardPassthrough:
-    """低于阈值时 guard 透传不修改状态"""
+    """低于阈值时 middleware 透传不修改状态"""
 
     @pytest.mark.asyncio
     async def test_few_messages_no_compression(self):
-        """消息少时返回空 dict，不触发压缩"""
+        """消息少时返回 None，不触发压缩"""
         _print_stage("Guard 透传", 1, 1)
-        from app.agents.handoffs.graph import _make_guard_node
+        from app.core.middleware import TravelPlannerMiddleware
 
         print("[注入] 仅2条消息, 不触发压缩")
         llm = make_mock_llm()
-        guard = _make_guard_node(llm)
+        middleware = TravelPlannerMiddleware(step_config={}, compression_llm=llm)
 
         state = {
             "messages": [
@@ -49,29 +59,34 @@ class TestGuardPassthrough:
                 AIMessage(content="好的，北京是个不错的选择"),
             ]
         }
-        result = await guard(state)
-        assert result == {}
+        result = await middleware.abefore_model(state, MagicMock())
+        assert result is None
         llm.ainvoke.assert_not_called()
 
 
 
 class TestGuardCompression:
-    """超阈值时 guard 压缩旧消息并注入摘要"""
+    """超阈值时 middleware 压缩旧消息并注入摘要"""
 
     @pytest.mark.asyncio
     async def test_compresses_when_exceeds_threshold(self):
         """超阈值时返回 RemoveMessage + context_summary"""
         _print_stage("Guard 压缩", 2, 1)
-        from app.agents.handoffs.graph import _make_guard_node
+        from app.core.middleware import TravelPlannerMiddleware
 
         llm = make_mock_llm("[摘要] 用户想去北京旅行，预算5000元")
-        guard = _make_guard_node(llm, max_tokens=100)
+        middleware = TravelPlannerMiddleware(
+            step_config={},
+            compression_llm=llm,
+            compression_max_tokens=100,
+            compression_keep_recent=10,
+        )
 
         old_msgs = make_messages(20)
         recent_msgs = make_messages(2)
 
         state = {"messages": old_msgs + recent_msgs}
-        result = await guard(state)
+        result = await middleware.abefore_model(state, MagicMock())
 
         assert "messages" in result
         result_msgs = result["messages"]
@@ -95,10 +110,15 @@ class TestGuardCompression:
     async def test_keeps_recent_messages(self):
         """最近 COMPRESSION_KEEP_RECENT 条消息不被删除"""
         _print_stage("Guard 压缩", 2, 2)
-        from app.agents.handoffs.graph import _make_guard_node, COMPRESSION_KEEP_RECENT
+        from app.core.middleware import TravelPlannerMiddleware, COMPRESSION_KEEP_RECENT
 
         llm = make_mock_llm("[摘要] 测试")
-        guard = _make_guard_node(llm, max_tokens=100)
+        middleware = TravelPlannerMiddleware(
+            step_config={},
+            compression_llm=llm,
+            compression_max_tokens=100,
+            compression_keep_recent=COMPRESSION_KEEP_RECENT,
+        )
 
         old_msgs = make_messages(20)
         recent = [
@@ -109,7 +129,7 @@ class TestGuardCompression:
         ]
 
         state = {"messages": old_msgs + recent}
-        result = await guard(state)
+        result = await middleware.abefore_model(state, MagicMock())
 
         result_msgs = result["messages"]
         remove_ids = {m.id for m in result_msgs if isinstance(m, RemoveMessage)}
@@ -124,19 +144,24 @@ class TestGuardFallback:
     async def test_fallback_on_llm_error(self):
         """LLM 调用失败时降级为简单截断，仍删除旧消息但不设置 context_summary"""
         _print_stage("Guard 降级", 1, 1)
-        from app.agents.handoffs.graph import _make_guard_node
+        from app.core.middleware import TravelPlannerMiddleware
 
         llm = make_mock_llm()
         print("[注入] LLM.ainvoke → Exception('API 错误')")
         llm.ainvoke = AsyncMock(side_effect=Exception("API 错误"))
 
-        guard = _make_guard_node(llm, max_tokens=100)
+        middleware = TravelPlannerMiddleware(
+            step_config={},
+            compression_llm=llm,
+            compression_max_tokens=100,
+            compression_keep_recent=10,
+        )
 
         old_msgs = make_messages(20)
         recent_msgs = make_messages(2)
 
         state = {"messages": old_msgs + recent_msgs}
-        result = await guard(state)
+        result = await middleware.abefore_model(state, MagicMock())
 
         result_msgs = result["messages"]
         has_remove = any(isinstance(m, RemoveMessage) for m in result_msgs)
