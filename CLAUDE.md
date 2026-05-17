@@ -124,7 +124,7 @@ Data-fetching tools return `str` (Markdown-formatted results):
 All LLM calls use `ChatOpenAI` with DashScope's OpenAI-compatible endpoint:
 ```python
 ChatOpenAI(
-    model="qwen3.5-plus",
+    model="qwen3.6-flash",
     api_key=settings.dashscope_api_key,
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )

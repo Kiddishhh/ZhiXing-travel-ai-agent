@@ -33,7 +33,10 @@ async def create_driving_subagent():
         model=settings.qwen_model_name,
         api_key=settings.dashscope_api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        temperature=0.1
+        temperature=0.1,
+        extra_body={"enable_thinking": False},
+        max_retries=2,
+        request_timeout=30.0,
     )
 
     # 异步获取工具

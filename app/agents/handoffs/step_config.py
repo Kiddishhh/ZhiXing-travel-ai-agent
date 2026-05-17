@@ -84,8 +84,9 @@ async def get_step_config() -> dict:
 
 ## ⚠️ 关键规则（必须遵守）
 
+- **必须先调用 `query_destination_info` 获取目的地信息，严禁在未查询的情况下直接调用 `select_destination_tool`**
 - 查询工具：随时可用，帮用户获取信息
-- 🔒 确认工具：仅在用户明确说出"可以""好的""就这个""确认""行""没问题"后才能调用
+- 🔒 确认工具：仅在用户明确说出"可以""好的""就这个""确认""行""没问题"后才能调用。调用前必须先完成查询并展示结果
 - 如果用户还在提问或补充需求 → 只回复文字，不调确认工具
 - 禁止在一条回复中连续调用多个确认工具
 - 回退工具仅在用户主动提出修改时使用
@@ -98,20 +99,21 @@ async def get_step_config() -> dict:
 - 旅行风格: {user_requirement}
 
 **📋 查询工具**:
-- `query_destination_info` — 获取目的地攻略和天气
+- `query_destination_info` — 获取目的地攻略和天气（必须先调用此工具）
 - `check_current_progress` — 查看进度
 - `get_current_date` — 获取当前日期
 
-**🔒 确认工具（用户确认后才可用）**:
+**🔒 确认工具（仅在查询完成且用户确认后才可用）**:
 - `select_destination_tool` — 确认目的地，进入交通规划
 
 **↩️ 回退工具（用户主动要求时使用）**:
 - `go_back_to_requirement` / `go_back_to_step` — 重新收集需求
 
 **任务**:
-1. 调用 `query_destination_info` 获取 3 个目的地信息
-2. 各用 2-3 句话推荐，说明特色和适合理由
-3. 等待用户选择 → 用户确认后调用 `select_destination_tool`
+1. **第一步**: 调用 `query_destination_info` 获取目的地攻略和天气信息
+2. 根据查询结果，向用户推荐 3 个目的地，各用 2-3 句话说明特色和适合理由
+3. 等待用户选择 → 用户明确确认后调用 `select_destination_tool`
+4. 如果用户还没选，继续推荐和讨论，不要调确认工具
 """,
             "tools": [
                 query_destination_info,

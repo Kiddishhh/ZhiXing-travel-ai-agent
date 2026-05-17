@@ -118,6 +118,11 @@ def select_destination_tool(
     """
     用户确认目的地后调用。记录选择并推进到交通规划。
 
+    只能在以下条件全部满足后才能调用此工具：
+    1. query_destination_info 已被调用并获取了目的地信息
+    2. 已向用户展示了推荐结果
+    3. 用户明确表示确认（如"可以""好的""就这个""行"）
+
     参数 (LLM 提供):
     - destination: 用户选择的目的地名称, 如 "西安"
     """
@@ -322,6 +327,9 @@ async def generate_itinerary_tool(
         api_key=settings.dashscope_api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         temperature=0.7,
+        extra_body={"enable_thinking": False},
+        max_retries=2,
+        request_timeout=30.0,
     )
     response = await llm.ainvoke(itinerary_prompt)
 

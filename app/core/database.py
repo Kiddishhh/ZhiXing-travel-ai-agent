@@ -6,8 +6,23 @@
 """
 import asyncio
 from typing import Optional
+from uuid import UUID
 
+from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
+
+
+def dict_row_str(cursor):
+    """dict_row 变体 —— 自动将 UUID 转为字符串，兼容 Pydantic 校验"""
+    _make_row = dict_row(cursor)
+
+    def make_row_str(values):
+        row = _make_row(values)
+        if row is None:
+            return None
+        return {k: str(v) if isinstance(v, UUID) else v for k, v in row.items()}
+
+    return make_row_str
 
 from app.config import settings
 from app.utils.logger import app_logger
@@ -97,6 +112,7 @@ class DatabaseManager:
                 min_size=settings.db_min_conn,
                 max_size=settings.db_max_conn,
                 timeout=settings.db_timeout,
+                kwargs={"row_factory": dict_row_str},
             )
             await self.pool.open()
 

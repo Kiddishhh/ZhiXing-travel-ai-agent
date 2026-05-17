@@ -14,10 +14,12 @@ async def get_me(pool_user: tuple = Depends(get_db)):
     """获取当前用户信息"""
     pool, user_id = pool_user
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT id, username, email, avatar_url, role, created_at FROM users WHERE id = $1",
-            user_id,
-        )
+        row = await (
+            await conn.execute(
+                "SELECT id, username, email, avatar_url, role, created_at FROM users WHERE id = %s",
+                (user_id,),
+            )
+        ).fetchone()
     return dict(row)
 
 

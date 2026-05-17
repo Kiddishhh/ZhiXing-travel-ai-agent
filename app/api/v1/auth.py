@@ -16,10 +16,12 @@ router = APIRouter(prefix="/auth", tags=["认证"])
 async def register(body: RegisterRequest, pool: AsyncConnectionPool = Depends(get_db_pool)):
     """用户注册"""
     async with pool.connection() as conn:
-        existing = await conn.fetchrow(
-            "SELECT id FROM users WHERE username = $1 OR email = $2",
-            body.username, body.email,
-        )
+        existing = await (
+            await conn.execute(
+                "SELECT id FROM users WHERE username = %s OR email = %s",
+                (body.username, body.email),
+            )
+        ).fetchone()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -31,14 +33,16 @@ async def register(body: RegisterRequest, pool: AsyncConnectionPool = Depends(ge
         ).decode("utf-8")
 
         user_id = uuid4()
-        row = await conn.fetchrow(
-            """
-            INSERT INTO users (id, username, email, password_hash)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, username, email, role, is_active, created_at
-            """,
-            user_id, body.username, body.email, password_hash,
-        )
+        row = await (
+            await conn.execute(
+                """
+                INSERT INTO users (id, username, email, password_hash)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, username, email, role, is_active, created_at
+                """,
+                (user_id, body.username, body.email, password_hash),
+            )
+        ).fetchone()
 
     app_logger.info(f"新用户注册: {body.username} ({user_id})")
     return dict(row)
@@ -48,10 +52,12 @@ async def register(body: RegisterRequest, pool: AsyncConnectionPool = Depends(ge
 async def login(body: LoginRequest, pool: AsyncConnectionPool = Depends(get_db_pool)):
     """用户登录"""
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT id, username, password_hash, role, is_active FROM users WHERE username = $1",
-            body.username,
-        )
+        row = await (
+            await conn.execute(
+                "SELECT id, username, password_hash, role, is_active FROM users WHERE username = %s",
+                (body.username,),
+            )
+        ).fetchone()
 
     if row is None:
         raise HTTPException(
@@ -74,7 +80,7 @@ async def login(body: LoginRequest, pool: AsyncConnectionPool = Depends(get_db_p
 
     async with pool.connection() as conn:
         await conn.execute(
-            "UPDATE users SET last_login_at = NOW() WHERE id = $1", user["id"]
+            "UPDATE users SET last_login_at = NOW() WHERE id = %s", (user["id"],)
         )
 
     token = create_access_token(user_id=str(user["id"]), role=user["role"])

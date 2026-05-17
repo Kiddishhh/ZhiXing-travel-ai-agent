@@ -17,6 +17,23 @@ from app.utils.logger import app_logger
 router = APIRouter(prefix="/chat", tags=["对话"])
 
 
+def _safe_serialize(obj, max_depth=3, _depth=0):
+    """递归将不可序列化对象转为安全类型，防止 json.dumps 报错"""
+    if _depth > max_depth:
+        return str(obj)[:200]
+    if isinstance(obj, dict):
+        return {str(k): _safe_serialize(v, max_depth, _depth + 1) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_safe_serialize(v, max_depth, _depth + 1) for v in obj]
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    # 不可序列化的对象 → 转字符串
+    try:
+        return str(obj)[:500]
+    except Exception:
+        return f"<{type(obj).__name__}>"
+
+
 async def _save_message(pool, conv_id: str, role: str, content: str,
                         content_type: str = "text", token_count: int = 0,
                         is_error: bool = False):
@@ -25,9 +42,9 @@ async def _save_message(pool, conv_id: str, role: str, content: str,
         await conn.execute(
             """
             INSERT INTO messages (id, conversation_id, role, content, content_type, token_count, is_error)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
-            uuid4(), conv_id, role, content, content_type, token_count, is_error,
+            (uuid4(), conv_id, role, content, content_type, token_count, is_error),
         )
 
 
@@ -48,10 +65,12 @@ async def chat_stream(body: ChatStreamRequest, pool_user: tuple = Depends(get_db
 
     # 1. 验证 conversation 归属
     async with pool.connection() as conn:
-        conv = await conn.fetchrow(
-            "SELECT * FROM conversations WHERE id = $1 AND status != 'deleted'",
-            body.conversation_id,
-        )
+        conv = await (
+            await conn.execute(
+                "SELECT * FROM conversations WHERE id = %s AND status != 'deleted'",
+                (body.conversation_id,),
+            )
+        ).fetchone()
     if conv is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
 
@@ -79,15 +98,18 @@ async def chat_stream(body: ChatStreamRequest, pool_user: tuple = Depends(get_db
             config = {"configurable": {"thread_id": thread_id}}
 
             # 5. 流式执行
-            current_step = None
+            last_step = "requirement_collection"
             async for event in graph.astream_events(initial_state, config, version="v2"):
                 kind = event.get("event")
 
-                # 步骤切换
-                step = event.get("metadata", {}).get("langgraph_node", "")
-                if step and step != current_step:
-                    current_step = step
-                    yield f"event: step\ndata: {json.dumps({'step': step})}\n\n"
+                # 步骤切换 — 从 LangGraph chain 结束时读 current_step
+                if kind == "on_chain_end" and event.get("name") == "LangGraph":
+                    output = event.get("data", {}).get("output", {})
+                    if isinstance(output, dict):
+                        new_step = output.get("current_step")
+                        if new_step and new_step != last_step:
+                            last_step = new_step
+                            yield f"event: step\ndata: {json.dumps({'step': new_step})}\n\n"
 
                 # LLM 流式输出
                 if kind == "on_chat_model_stream":
@@ -99,13 +121,18 @@ async def chat_stream(body: ChatStreamRequest, pool_user: tuple = Depends(get_db
                 if kind == "on_tool_start":
                     tool_name = event.get("name", "unknown")
                     tool_input = event.get("data", {}).get("input", {})
-                    yield f"event: tool_call\ndata: {json.dumps({'tool': tool_name, 'args': tool_input})}\n\n"
+                    safe_args = _safe_serialize(tool_input)
+                    yield f"event: tool_call\ndata: {json.dumps({'tool': tool_name, 'args': safe_args})}\n\n"
 
                 # 工具调用结束
                 if kind == "on_tool_end":
                     tool_name = event.get("name", "unknown")
                     output = event.get("data", {}).get("output", "")
-                    preview = str(output)[:500] if output else ""
+                    preview = _safe_serialize(output) if output else ""
+                    if isinstance(preview, (dict, list)):
+                        preview = json.dumps(preview, ensure_ascii=False)[:500]
+                    else:
+                        preview = str(preview)[:500]
                     yield f"event: tool_result\ndata: {json.dumps({'tool': tool_name, 'preview': preview})}\n\n"
 
                 # 保存 AI 完整消息
@@ -117,8 +144,8 @@ async def chat_stream(body: ChatStreamRequest, pool_user: tuple = Depends(get_db
             # 6. 更新会话
             async with pool.connection() as conn:
                 await conn.execute(
-                    "UPDATE conversations SET updated_at = NOW() WHERE id = $1",
-                    body.conversation_id,
+                    "UPDATE conversations SET updated_at = NOW() WHERE id = %s",
+                    (body.conversation_id,),
                 )
 
             yield f"event: done\ndata: {json.dumps({'conversation_id': body.conversation_id})}\n\n"
@@ -150,21 +177,25 @@ async def get_messages(
 
     # 归属校验
     async with pool.connection() as conn:
-        conv = await conn.fetchrow("SELECT user_id FROM conversations WHERE id = $1", conv_id)
+        conv = await (
+            await conn.execute("SELECT user_id FROM conversations WHERE id = %s", (conv_id,))
+        ).fetchone()
         if conv is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
         if str(dict(conv)["user_id"]) != str(user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
 
-        rows = await conn.fetch(
-            """
-            SELECT * FROM messages
-            WHERE conversation_id = $1
-            ORDER BY created_at ASC
-            LIMIT $2 OFFSET $3
-            """,
-            conv_id, limit, offset,
-        )
+        rows = await (
+            await conn.execute(
+                """
+                SELECT * FROM messages
+                WHERE conversation_id = %s
+                ORDER BY created_at ASC
+                LIMIT %s OFFSET %s
+                """,
+                (conv_id, limit, offset),
+            )
+        ).fetchall()
 
     return {
         "conversation_id": conv_id,

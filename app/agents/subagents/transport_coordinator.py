@@ -102,7 +102,10 @@ async def create_transport_coordinator():
         model=settings.qwen_model_name,
         api_key=settings.dashscope_api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        temperature=0.7
+        temperature=0.7,
+        extra_body={"enable_thinking": False},
+        max_retries=2,
+        request_timeout=30.0,
     )
 
     # 获取辅助工具

@@ -17,14 +17,16 @@ async def create_conversation(body: ConversationCreate, pool_user: tuple = Depen
     conv_id = uuid4()
 
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO conversations (id, user_id, title, current_model, system_prompt)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING *
-            """,
-            conv_id, user_id, body.title, body.current_model, body.system_prompt,
-        )
+        row = await (
+            await conn.execute(
+                """
+                INSERT INTO conversations (id, user_id, title, current_model, system_prompt)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (conv_id, user_id, body.title, body.current_model, body.system_prompt),
+            )
+        ).fetchone()
 
     app_logger.info(f"会话创建: {conv_id} (user={user_id})")
     return dict(row)
@@ -39,15 +41,17 @@ async def list_conversations(
     """获取会话列表"""
     pool, user_id = pool_user
     async with pool.connection() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT * FROM conversations
-            WHERE user_id = $1 AND status != 'deleted'
-            ORDER BY updated_at DESC
-            LIMIT $2 OFFSET $3
-            """,
-            user_id, limit, offset,
-        )
+        rows = await (
+            await conn.execute(
+                """
+                SELECT * FROM conversations
+                WHERE user_id = %s AND status != 'deleted'
+                ORDER BY updated_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (user_id, limit, offset),
+            )
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -56,9 +60,11 @@ async def get_conversation(conv_id: str, pool_user: tuple = Depends(get_db)):
     """获取会话详情"""
     pool, user_id = pool_user
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM conversations WHERE id = $1", conv_id
-        )
+        row = await (
+            await conn.execute(
+                "SELECT * FROM conversations WHERE id = %s", (conv_id,)
+            )
+        ).fetchone()
 
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
@@ -80,9 +86,11 @@ async def update_conversation(
     pool, user_id = pool_user
 
     async with pool.connection() as conn:
-        existing = await conn.fetchrow(
-            "SELECT * FROM conversations WHERE id = $1", conv_id
-        )
+        existing = await (
+            await conn.execute(
+                "SELECT * FROM conversations WHERE id = %s", (conv_id,)
+            )
+        ).fetchone()
         if existing is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
 
@@ -97,7 +105,7 @@ async def update_conversation(
         set_clauses = []
         params = []
         for i, (key, val) in enumerate(updates.items(), start=1):
-            set_clauses.append(f"{key} = ${i}")
+            set_clauses.append(f"{key} = %s")
             params.append(val)
 
         params.append(conv_id)
@@ -105,9 +113,9 @@ async def update_conversation(
 
         sql = (
             f"UPDATE conversations SET {', '.join(set_clauses)}, updated_at = NOW() "
-            f"WHERE id = ${conv_id_idx} RETURNING *"
+            f"WHERE id = %s RETURNING *"
         )
-        row = await conn.fetchrow(sql, *params)
+        row = await (await conn.execute(sql, tuple(params))).fetchone()
 
     return dict(row)
 
@@ -118,17 +126,19 @@ async def delete_conversation(conv_id: str, pool_user: tuple = Depends(get_db)):
     pool, user_id = pool_user
 
     async with pool.connection() as conn:
-        existing = await conn.fetchrow(
-            "SELECT * FROM conversations WHERE id = $1", conv_id
-        )
+        existing = await (
+            await conn.execute(
+                "SELECT * FROM conversations WHERE id = %s", (conv_id,)
+            )
+        ).fetchone()
         if existing is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
         if str(dict(existing)["user_id"]) != str(user_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问")
 
         await conn.execute(
-            "UPDATE conversations SET status = 'deleted', updated_at = NOW() WHERE id = $1",
-            conv_id,
+            "UPDATE conversations SET status = 'deleted', updated_at = NOW() WHERE id = %s",
+            (conv_id,),
         )
 
     app_logger.info(f"会话已删除: {conv_id}")

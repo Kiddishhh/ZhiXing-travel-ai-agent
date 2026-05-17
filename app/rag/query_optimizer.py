@@ -58,6 +58,9 @@ class QueryOptimizer:
                 temperature=temperature,
                 api_key=settings.dashscope_api_key,
                 base_url=settings.qwen_base_url,
+                extra_body={"enable_thinking": False},
+                max_retries=2,
+                request_timeout=30.0,
             ).with_structured_output(QueryOptimizeResult, method="function_calling")
         )
 

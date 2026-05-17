@@ -17,8 +17,6 @@ from app.rag.retriever import HybridRetriever
 from app.rag.reranker import LLMReranker
 from app.rag.text_splitter import ParentDocumentSplitter
 from app.rag.document_loader import DocumentManager
-from app.core.ChromaDB.chroma_client import ChromaManager
-
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 
@@ -124,11 +122,13 @@ def classifier_node(state: DestinationRouterState) -> dict:
     destination = state["destination"]
 
     llm = ChatOpenAI(
-        model="qwen3.6-plus",
+        model="qwen3.6-flash",
         temperature=0.0,
         api_key=settings.dashscope_api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         extra_body={"enable_thinking": False},
+        max_retries=2,
+        request_timeout=30.0,
     )
     structured_llm = llm.with_structured_output(ClassificationResult, method="function_calling")
 

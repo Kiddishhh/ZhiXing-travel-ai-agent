@@ -3,9 +3,12 @@ FastAPI 应用工厂
 
 lifespan 统一管理 checkpointer / memory_store / database 生命周期。
 """
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from app.api.v1.router import v1_router
 from app.core.checkpointer import CheckpointerManager
@@ -17,23 +20,38 @@ from app.utils.logger import app_logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期管理"""
+    """应用生命周期管理 —— 服务不可用时优雅降级，前端仍可加载"""
     app_logger.info("=== 启动服务 ===")
+    checkpointer_mgr = None
+    memory_mgr = None
+    db_mgr = None
 
-    checkpointer_mgr = await CheckpointerManager.get_instance()
-    app_logger.info("Checkpointer 已就绪")
+    try:
+        checkpointer_mgr = await CheckpointerManager.get_instance()
+        app_logger.info("Checkpointer 已就绪")
+    except Exception as e:
+        app_logger.warning(f"Checkpointer 未就绪 (前端仍可用): {e}")
 
-    memory_mgr = await MemoryStoreManager.get_instance()
-    app_logger.info("MemoryStore 已就绪")
+    try:
+        memory_mgr = await MemoryStoreManager.get_instance()
+        app_logger.info("MemoryStore 已就绪")
+    except Exception as e:
+        app_logger.warning(f"MemoryStore 未就绪 (前端仍可用): {e}")
 
-    db_mgr = await DatabaseManager.get_instance()
-    app_logger.info("Database 已就绪")
+    try:
+        db_mgr = await DatabaseManager.get_instance()
+        app_logger.info("Database 已就绪")
+    except Exception as e:
+        app_logger.warning(f"Database 未就绪 (前端仍可用): {e}")
 
     yield
 
-    await db_mgr.close()
-    await memory_mgr.close()
-    await checkpointer_mgr.close()
+    for mgr, name in [(db_mgr, "Database"), (memory_mgr, "MemoryStore"), (checkpointer_mgr, "Checkpointer")]:
+        if mgr is not None:
+            try:
+                await mgr.close()
+            except Exception as e:
+                app_logger.warning(f"{name} 关闭异常: {e}")
     app_logger.info("=== 服务已关闭 ===")
 
 
@@ -55,5 +73,14 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(v1_router, prefix="/api/v1")
+
+    # 静态文件 (前端 SPA)
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir), html=True), name="static")
+
+        @app.get("/")
+        async def root():
+            return FileResponse(str(static_dir / "index.html"))
 
     return app

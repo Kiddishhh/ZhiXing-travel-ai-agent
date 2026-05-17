@@ -35,7 +35,7 @@ def main():
     if not api_key:
         print("[ERROR] DASHSCOPE_API_KEY 未设置，请检查 .env 文件")
         return
-    model_name = os.getenv("QWEN_MODEL_NAME", "qwen3.6-plus")
+    model_name = os.getenv("QWEN_MODEL_NAME", "qwen3.6-flash")
     print(f"[配置] model={model_name}, base_url=https://dashscope.aliyuncs.com/compatible-mode/v1")
 
     try:
