@@ -8,6 +8,7 @@ TravelPlannerMiddleware 继承 AgentMiddleware, 提供三个钩子:
 
 替代了原来的 StepConfigResolver + _make_guard_node + _make_agent_node。
 """
+import uuid as _uuid
 from typing import Callable, Awaitable
 
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
@@ -117,15 +118,12 @@ class TravelPlannerMiddleware(AgentMiddleware):
             app_logger.error(f"上下文压缩失败: {e}, 降级为简单截断")
             summary = None
 
-        import uuid as _uuid
-
         result_messages = []
         for msg in old_msgs:
-            msg_id = (
-                getattr(msg, 'id', None)
-                or getattr(msg, 'message_id', None)
-                or str(_uuid.uuid4())
-            )
+            msg_id = getattr(msg, 'id', None) or getattr(msg, 'message_id', None)
+            if msg_id is None:
+                app_logger.warning(f"消息缺少 id, 无法删除: {type(msg).__name__}")
+                continue
             result_messages.append(RemoveMessage(id=msg_id))
 
         result = {"messages": result_messages}
@@ -205,10 +203,7 @@ class TravelPlannerMiddleware(AgentMiddleware):
                     ),
                     tool_call_id=request.tool_call["id"],
                 )
-            return ToolMessage(
-                content=f"操作未能完成：{msg[:300]}。请向用户说明并询问如何处理。",
-                tool_call_id=request.tool_call["id"],
-            )
+            raise
 
 
 def _format_profile_for_prompt(profile: dict) -> str:

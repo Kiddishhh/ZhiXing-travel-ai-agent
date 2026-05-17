@@ -40,10 +40,17 @@ class TestBeforeModelCompression:
     """超阈值时 abefore_model 压缩旧消息并注入摘要"""
 
     def _make_messages(self, count: int) -> list:
+        import uuid as _uuid
         msgs = []
         for i in range(count):
-            msgs.append(HumanMessage(content=f"用户消息 {i} " + "extra " * 50))
-            msgs.append(AIMessage(content=f"AI回复 {i} " + "extra " * 50))
+            msgs.append(HumanMessage(
+                content=f"用户消息 {i} " + "extra " * 50,
+                id=str(_uuid.uuid4()),
+            ))
+            msgs.append(AIMessage(
+                content=f"AI回复 {i} " + "extra " * 50,
+                id=str(_uuid.uuid4()),
+            ))
         return msgs
 
     @pytest.mark.asyncio
